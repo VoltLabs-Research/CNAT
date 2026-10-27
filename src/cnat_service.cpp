@@ -1,6 +1,8 @@
 #include <volt/plugin/cnat_service.h>
 #include <volt/plugin/cnat_model.h>
 #include <volt/plugin/phase_field_mesh.h>
+#include <volt/plugin/lattice_matcher.h>
+#include <volt/plugin/structure_contract.h>
 #include <volt/analysis/nearest_neighbor_finder.h>
 #include <volt/core/analysis_result.h>
 #include <volt/core/frame_adapter.h>
@@ -9,6 +11,7 @@
 #include <volt/utilities/json_utils.h>
 #include <volt/utilities/parquet_atom_writer.h>
 #include <volt/utilities/parquet_mesh_writer.h>
+#include <volt/structures/crystal_topology_registry.h>
 #include <spdlog/spdlog.h>
 #include <tbb/blocked_range.h>
 #include <tbb/parallel_for.h>
@@ -19,6 +22,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <optional>
+#include <utility>
 
 namespace Volt {
 
@@ -64,6 +68,53 @@ std::optional<std::vector<int>> parseTypes(const std::string& text) {
 std::string lowercase(std::string s) {
     for (auto& ch : s) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
     return s;
+}
+
+// Structure id of every class: StructureType's when the class names one of its structures (FCC, HCP,
+// BCC, ...), so CNAT's atoms read as the other producers'; class 0 is OTHER, and the other crystal
+// classes count up from kCustomTopologyTypeBase.
+std::vector<int> structureIds(const std::vector<std::string>& names) {
+    std::vector<int> ids(names.size(), StructureType::OTHER);
+    for (std::size_t c = 1; c < names.size(); ++c) {
+        const int known = structureTypeOfName(names[c]);
+        ids[c] = known != StructureType::OTHER ? known : kCustomTopologyTypeBase + static_cast<int>(c);
+    }
+    return ids;
+}
+
+std::vector<std::string> splitList(const std::string& text) {
+    std::vector<std::string> items;
+    std::size_t start = 0;
+    while (start <= text.size()) {
+        const std::size_t end = std::min(text.find(',', start), text.size());
+        std::string item = text.substr(start, end - start);
+        item.erase(0, item.find_first_not_of(" \t"));
+        item.erase(item.find_last_not_of(" \t") + 1);
+        if (!item.empty()) items.push_back(std::move(item));
+        start = end + 1;
+    }
+    return items;
+}
+
+// The lattice topologies of the model's crystal classes, each close-packed or diamond one with its
+// partner: the planar faults of either are local patches of the other, as CNA labels both from
+// either input lattice.
+std::vector<std::string> modelTopologies(const std::vector<std::string>& names) {
+    static const std::pair<const char*, const char*> partners[] = {
+        {"fcc", "hcp"}, {"hcp", "fcc"}, {"cubic_diamond", "hex_diamond"}, {"hex_diamond", "cubic_diamond"}};
+    std::vector<std::string> topologies;
+    auto add = [&](const std::string& name) {
+        if (crystalTopologyByName(name) && std::ranges::find(topologies, name) == topologies.end())
+            topologies.push_back(name);
+    };
+    for (std::size_t c = 1; c < names.size(); ++c) {
+        const std::string name = lowercase(names[c]);
+        if (!crystalTopologyByName(name)) continue;
+        add(name);
+        for (const auto& [topology, partner] : partners)
+            if (name == topology) add(partner);
+    }
+    return topologies;
 }
 
 // probability_crystalline (1 - P(class 0), the field of the interface mesh, with the same name for
@@ -128,11 +179,11 @@ std::string countSummary(const std::vector<std::int64_t>& counts, const std::vec
 }
 
 json countRows(const std::vector<std::int64_t>& counts, const std::vector<std::string>& names,
-               std::size_t total, const char* countKey) {
+               const std::vector<int>& ids, std::size_t total, const char* countKey) {
     json rows = json::array();
     for (std::size_t c = 0; c < counts.size(); ++c) {
         rows.push_back({
-            {"structure_id", static_cast<int>(c)},
+            {"structure_id", ids[c]},
             {"structure_name", names[c]},
             {countKey, counts[c]},
             {"fraction", total ? static_cast<double>(counts[c]) / static_cast<double>(total) : 0.0},
@@ -182,6 +233,8 @@ json CnatService::compute(const LammpsParser::Frame& frame, const std::string& o
         return AnalysisResult::failure("Invalid number of atoms");
     if (!(_threshold > 0.0 && _threshold < 1.0))
         return AnalysisResult::failure("--threshold must lie strictly between 0 and 1");
+    if (!(_rmsd > 0.0))
+        return AnalysisResult::failure("--rmsd must be positive");
 
     std::optional<CnatModel> loaded;
     try {
@@ -192,6 +245,7 @@ json CnatService::compute(const LammpsParser::Frame& frame, const std::string& o
     const CnatModel& model = *loaded;
     const CnatConfig& cfg = model.config();
     const std::vector<std::string> names = classNames(model);
+    const std::vector<int> ids = structureIds(names);
     const bool builtIn = std::ranges::any_of(CnatModel::embeddedModels(),
         [&](const CnatModel::Embedded& e) { return _modelPath.empty() || _modelPath == e.name; });
     spdlog::info("Model {}: {} neighbours, hidden {}, {} layers, {} heads, MLP {}, {} parameters, classes {}",
@@ -252,7 +306,41 @@ json CnatService::compute(const LammpsParser::Frame& frame, const std::string& o
     };
     for (int c = 0; c < cfg.classes; ++c)
         result["main_listing"][names[c]] = atomCounts[c];
-    result["sub_listings"]["structure_counts"] = countRows(atomCounts, names, natoms, "count");
+    result["sub_listings"]["structure_counts"] = countRows(atomCounts, names, ids, natoms, "count");
+
+    std::vector<LatticeTopology> topologies;
+    StructureContractAtoms contractAtoms;
+    const std::string topologyRequest = lowercase(_topologies);
+    if (!outputBase.empty() && topologyRequest != "none") {
+        const bool automatic = topologyRequest.empty() || topologyRequest == "auto";
+        std::vector<std::string> requested;
+        try {
+            if (!_latticeDir.empty()) setCrystalTopologySearchRoot(_latticeDir);
+            requested = automatic ? modelTopologies(names) : splitList(_topologies);
+            topologies = loadLatticeTopologies(requested);
+            if (requested.empty())
+                spdlog::info("No class of the model names a lattice topology; pass --topologies to write the structure contract");
+        } catch (const std::exception& e) {
+            if (!automatic)
+                return AnalysisResult::failure(std::string("Cannot load the lattice topologies: ") + e.what());
+            spdlog::warn("Cannot load the lattice topologies ({}); the structure contract is not written", e.what());
+        }
+        if (!topologies.empty()) {
+            std::vector<int> sites;
+            for (int i = 0; i < frame.natoms; ++i)
+                if (types->empty() || std::ranges::find(*types, frame.types[i]) != types->end()) sites.push_back(i);
+            std::vector<int> classTopology(names.size(), kAnyTopology);
+            classTopology[0] = kNotCrystalline;
+            for (std::size_t c = 1; c < names.size(); ++c)
+                for (std::size_t t = 0; t < topologies.size(); ++t)
+                    if (lowercase(names[c]) == lowercase(topologies[t].name)) classTopology[c] = static_cast<int>(t);
+            std::vector<int> preferred(natoms);
+            for (std::size_t i = 0; i < natoms; ++i) preferred[i] = classTopology[atomLabels[i]];
+            if (auto error = writeStructureContract(frame, outputBase, sites, preferred, topologies, _rmsd, result, contractAtoms))
+                return AnalysisResult::failure("Cannot write the structure contract: " + *error);
+        }
+    }
+    result["main_listing"]["structure_contract"] = !topologies.empty();
 
     if (_gridSpacing > 0.0) {
         const SimulationCell& cell = frame.simulationCell;
@@ -278,7 +366,7 @@ json CnatService::compute(const LammpsParser::Frame& frame, const std::string& o
 
         result["main_listing"]["grid"] = std::to_string(dims[0]) + "x" + std::to_string(dims[1]) + "x" + std::to_string(dims[2]);
         result["main_listing"]["grid_spacing"] = _gridSpacing;
-        result["sub_listings"]["volume_fractions"] = countRows(gridCounts, names, gridCount, "grid_points");
+        result["sub_listings"]["volume_fractions"] = countRows(gridCounts, names, ids, gridCount, "grid_points");
 
         if (_exportInterfaceMesh) {
             spdlog::info("Extracting the interface at 1 - P({}) = {} (smoothing {:.1f} A)...", names[0], _threshold, _interfaceSmoothing);
@@ -313,7 +401,7 @@ json CnatService::compute(const LammpsParser::Frame& frame, const std::string& o
                 [&](ColumnarAtomWriter& w, std::size_t g) {
                     writeProbabilities(w, gridProbabilities.data() + g * cfg.classes, names);
                 },
-                [&](std::size_t g) { return gridLabels[g]; },
+                [&](std::size_t g) { return ids[gridLabels[g]]; },
                 true);
         }
     }
@@ -324,8 +412,13 @@ json CnatService::compute(const LammpsParser::Frame& frame, const std::string& o
             .bucketResolver = [&](std::size_t i) { return names[atomLabels[i]]; },
             .perAtomColumnWriter = [&](ColumnarAtomWriter& w, std::size_t i) {
                 writeProbabilities(w, atomProbabilities.data() + i * cfg.classes, names);
+                if (topologies.empty()) return;
+                const int t = contractAtoms.topology[i];
+                w.field("lattice_structure", t >= 0 ? topologies[t].name : std::string("OTHER"));
+                if (!std::isnan(contractAtoms.rmsd[i]))
+                    w.field("lattice_rmsd", static_cast<double>(contractAtoms.rmsd[i]));
             },
-            .resolveStructureId = [&](std::size_t i) { return atomLabels[i]; },
+            .resolveStructureId = [&](std::size_t i) { return ids[atomLabels[i]]; },
             .includeStructureColumns = true,
         });
     }

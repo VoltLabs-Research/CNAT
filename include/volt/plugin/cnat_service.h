@@ -15,6 +15,11 @@ using json = nlohmann::json;
 // the iso-surface where 1 - P(class 0) equals the threshold. With atom types set, only atoms of those
 // types are neighbours (a sublattice model, e.g. the oxygens of a silicate), and every atom is still
 // labelled from the sublattice around its position.
+//
+// The crystalline atoms also give the structure-identification contract OpenDXA reads: each one is
+// aligned onto the lattice topologies (YAML files of the lattice registry, any of them, not only
+// those of PTM or CNA) and takes the best fit, from which the shared cluster builder grows the
+// crystal clusters. CNAT decides where the crystal is; the topology gives the neighbour order.
 class CnatService {
 public:
     void setModelPath(std::string path) { _modelPath = std::move(path); }
@@ -24,6 +29,9 @@ public:
     void setInterfaceSmoothing(double sigma) { _interfaceSmoothing = sigma; }
     void setExportPhaseField(bool on) { _exportPhaseField = on; }
     void setTypes(std::string types) { _types = std::move(types); }
+    void setTopologies(std::string topologies) { _topologies = std::move(topologies); }
+    void setLatticeDir(std::string directory) { _latticeDir = std::move(directory); }
+    void setRmsd(double rmsd) { _rmsd = rmsd; }
 
     json compute(const LammpsParser::Frame& frame, const std::string& outputBase);
 
@@ -35,6 +43,9 @@ private:
     double _interfaceSmoothing = 2.0;
     bool _exportPhaseField = false;
     std::string _types;
+    std::string _topologies = "auto";
+    std::string _latticeDir;
+    double _rmsd = 0.2;
 };
 
 }

@@ -58,6 +58,21 @@
                 "default": ""
               },
               {
+                "argument": "topologies",
+                "type": "string",
+                "label": "Lattice Topologies",
+                "default": "auto"
+              },
+              {
+                "argument": "rmsd",
+                "type": "number",
+                "label": "Lattice RMSD",
+                "default": 0.2,
+                "min": 0.01,
+                "max": 1,
+                "step": 0.01
+              },
+              {
                 "argument": "threshold",
                 "type": "number",
                 "label": "Crystalline Threshold",
@@ -162,15 +177,21 @@
                 "type": "int64",
                 "enum": {
                   "0": "LIQUID / DISORDERED",
-                  "1": "FCC / OLIVINE",
-                  "2": "HCP",
-                  "3": "BCC"
+                  "2": "FCC",
+                  "3": "HCP",
+                  "4": "BCC",
+                  "1001": "OLIVINE"
                 }
               },
               {
                 "key": "probability_crystalline",
                 "label": "P(crystalline)",
                 "type": "number"
+              },
+              {
+                "key": "lattice_structure",
+                "label": "Lattice structure",
+                "type": "string"
               }
             ]
           }
@@ -290,9 +311,10 @@
                 "type": "int64",
                 "enum": {
                   "0": "LIQUID / DISORDERED",
-                  "1": "FCC / OLIVINE",
-                  "2": "HCP",
-                  "3": "BCC"
+                  "2": "FCC",
+                  "3": "HCP",
+                  "4": "BCC",
+                  "1001": "OLIVINE"
                 }
               },
               {
@@ -490,6 +512,57 @@
             }
           }
         }
+      },
+      {
+        "id": "clusters-table-exposure",
+        "type": "exposure",
+        "position": {
+          "x": 1712,
+          "y": 640
+        },
+        "data": {
+          "exposure": {
+            "name": "Clusters Table",
+            "icon": "HiTable",
+            "id": "clusters_table",
+            "results": "clusters.table",
+            "hasListing": false
+          }
+        }
+      },
+      {
+        "id": "clusters-transitions-exposure",
+        "type": "exposure",
+        "position": {
+          "x": 1712,
+          "y": 768
+        },
+        "data": {
+          "exposure": {
+            "name": "Clusters Transitions",
+            "icon": "HiTable",
+            "id": "clusters_transitions",
+            "results": "cluster_transitions.table",
+            "hasListing": false
+          }
+        }
+      },
+      {
+        "id": "neighbor-lattice-exposure",
+        "type": "exposure",
+        "position": {
+          "x": 1712,
+          "y": 896
+        },
+        "data": {
+          "exposure": {
+            "name": "Neighbor Lattice",
+            "icon": "HiTable",
+            "id": "neighbor_lattice",
+            "results": "neighbor_lattice.parquet",
+            "hasListing": false
+          }
+        }
       }
     ],
     "edges": [
@@ -569,6 +642,27 @@
         "sourceHandle": "output",
         "target": "summary-exposure",
         "targetHandle": "input"
+      },
+      {
+        "id": "edge-analysis-entrypoint-clusters-table-exposure",
+        "source": "analysis-entrypoint",
+        "sourceHandle": "output",
+        "target": "clusters-table-exposure",
+        "targetHandle": "input"
+      },
+      {
+        "id": "edge-analysis-entrypoint-clusters-transitions-exposure",
+        "source": "analysis-entrypoint",
+        "sourceHandle": "output",
+        "target": "clusters-transitions-exposure",
+        "targetHandle": "input"
+      },
+      {
+        "id": "edge-analysis-entrypoint-neighbor-lattice-exposure",
+        "source": "analysis-entrypoint",
+        "sourceHandle": "output",
+        "target": "neighbor-lattice-exposure",
+        "targetHandle": "input"
       }
     ]
   },
@@ -577,6 +671,12 @@
     "provides": {
       "volt/per-atom-properties@1": {
         "atoms": "atoms.parquet"
+      },
+      "volt/structure-identification@1": {
+        "annotated_dump": "annotated.dump",
+        "clusters_table": "clusters.table",
+        "cluster_transitions": "cluster_transitions.table",
+        "neighbor_lattice": "neighbor_lattice.parquet"
       }
     }
   }
