@@ -33,36 +33,40 @@ constexpr double kOverrideRmsdRatio = 0.5;
 // Shockley segments, none with this support).
 constexpr int kOverrideSupport = 2;
 
-// The shared orientation rule, for the topologies that need it; the others keep the overlap test.
+// The shared orientation rule, for the topologies that need it; the others keep the overlap test. The
+// rule is called through its base class, as PTM does: structure-identification declares Cluster as a
+// class and defines it as a struct, and MSVC mangles the two differently, so a direct call would not
+// link on Windows.
 class OrientationRuleFor final : public ClusterRuleProvider {
 public:
     OrientationRuleFor(std::shared_ptr<const std::vector<OrientationClusterAtomState>> orientations, std::vector<int> structureTypes)
-        : _rule(std::move(orientations)), _structureTypes(std::move(structureTypes)) {}
+        : _rule(std::make_shared<OrientationClusterRuleProvider>(std::move(orientations))),
+          _structureTypes(std::move(structureTypes)) {}
 
     void initializeClusterSeed(const StructureAnalysis& analysis, const AnalysisContext& context, Cluster& cluster,
                                int seedAtomIndex, int structureType) const override {
-        if (handles(structureType)) _rule.initializeClusterSeed(analysis, context, cluster, seedAtomIndex, structureType);
+        if (handles(structureType)) _rule->initializeClusterSeed(analysis, context, cluster, seedAtomIndex, structureType);
     }
 
     ClusterRuleDecision tryAssignNeighbor(const StructureAnalysis& analysis, const AnalysisContext& context,
                                           const Cluster& cluster, int currentAtomIndex, int neighborAtomIndex,
                                           int neighborIndex, int structureType, int& outNeighborSymmetry) const override {
         if (!handles(structureType)) return ClusterRuleDecision::Unhandled;
-        return _rule.tryAssignNeighbor(analysis, context, cluster, currentAtomIndex, neighborAtomIndex, neighborIndex,
-                                       structureType, outNeighborSymmetry);
+        return _rule->tryAssignNeighbor(analysis, context, cluster, currentAtomIndex, neighborAtomIndex, neighborIndex,
+                                        structureType, outNeighborSymmetry);
     }
 
     ClusterRuleDecision tryCalculateTransition(const StructureAnalysis& analysis, const AnalysisContext& context,
                                                int atomIndex, int neighborAtomIndex, int neighborIndex,
                                                Matrix3& outTransition) const override {
         if (!handles(context.structureTypes->getInt(atomIndex))) return ClusterRuleDecision::Unhandled;
-        return _rule.tryCalculateTransition(analysis, context, atomIndex, neighborAtomIndex, neighborIndex, outTransition);
+        return _rule->tryCalculateTransition(analysis, context, atomIndex, neighborAtomIndex, neighborIndex, outTransition);
     }
 
 private:
     bool handles(int structureType) const { return std::ranges::find(_structureTypes, structureType) != _structureTypes.end(); }
 
-    OrientationClusterRuleProvider _rule;
+    std::shared_ptr<const ClusterRuleProvider> _rule;
     std::vector<int> _structureTypes;
 };
 
