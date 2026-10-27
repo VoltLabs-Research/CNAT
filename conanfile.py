@@ -15,11 +15,13 @@ class CnatConan(ConanFile):
         "boost/1.88.0",
         "onetbb/2021.12.0",
         "coretoolkit/[>=2.5]",
+        "structure-identification/[>=2.1]",
         "spdlog/1.14.1",
         "nlohmann_json/3.11.3",
+        "yaml-cpp/0.8.0",
     )
     exports = "vpm.json"
-    exports_sources = "CMakeLists.txt", "cmake/*", "include/*", "src/*", "models/*", "tests/*"
+    exports_sources = "CMakeLists.txt", "cmake/*", "include/*", "src/*", "models/*", "tests/*", "lattices/*"
 
     def set_version(self):
         manifest = os.path.join(self.recipe_folder, "vpm.json")
@@ -49,6 +51,8 @@ class CnatConan(ConanFile):
             "boost::headers",
             "onetbb::onetbb",
             "coretoolkit::coretoolkit",
+            "structure-identification::structure-identification",
             "nlohmann_json::nlohmann_json",
             "spdlog::spdlog",
+            "yaml-cpp::yaml-cpp",
         ]
