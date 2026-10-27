@@ -1,0 +1,61 @@
+# Ni solid-liquid coexistence at 1700 K (Watanabe et al. 2027, Sec. 3.2), built in one box.
+# The lattice is the FCC NPT lattice parameter at 1700 K, so the solid is unstrained in x and z.
+# The upper half is melted at 4000 K with the lower half held fixed (5 ps at 2500 K does not
+# melt a perfect lattice; cnat-jax's Makefile also melts at 4000 K), then cooled to 1800 K,
+# the paper's liquid preparation temperature. The combined system then runs 100 ps of
+# anisotropic NPT at 1700 K and 0 bar; NVT at the solid density would let the compressed
+# liquid recrystallise from the interfaces.
+#
+# lmp -in in.interface -var nx 80 -var ny 80 -var nz 6 -var alat 3.5884 -var pfile Mishin-Ni-Al-2009.eam.alloy
+
+log             log.interface
+
+units           metal
+boundary        p p p
+atom_style      atomic
+
+lattice         fcc ${alat}
+region          box block 0 ${nx} 0 ${ny} 0 ${nz}
+create_box      2 box
+create_atoms    1 box
+
+pair_style      eam/alloy
+pair_coeff      * * ${pfile} Ni Al
+
+variable        ymid equal ${ny}/2
+region          rsol block INF INF INF ${ymid} INF INF
+group           sol region rsol
+group           liq subtract all sol
+
+thermo          1000
+thermo_style    custom step time temp pe press lx ly lz
+thermo_modify   flush yes
+
+variable        dt equal 0.001
+timestep        ${dt}
+variable        tdamp equal 100*${dt}
+variable        pdamp equal 1000*${dt}
+
+# 1) Melt the liquid half; the solid half is not integrated, so it stays a perfect lattice.
+velocity        liq create 4000 4711 mom yes rot no dist gaussian
+fix             nvtL liq nvt temp 4000 4000 ${tdamp}
+run             5000
+unfix           nvtL
+
+# 2) Cool the liquid to 1800 K.
+fix             nvtL liq nvt temp 1800 1800 ${tdamp}
+run             3000
+unfix           nvtL
+write_data      data.interface.melt nocoeff
+
+# 3) Coexistence: solid at 1700 K, anisotropic NPT at 1700 K, snapshots every 25 ps.
+velocity        sol create 1700 1213 mom yes rot no dist gaussian
+fix             npt1 all npt temp 1700 1700 ${tdamp} aniso 0.0 0.0 ${pdamp}
+run             25000
+write_data      data.interface.25ps nocoeff
+run             25000
+write_data      data.interface.50ps nocoeff
+run             25000
+write_data      data.interface.75ps nocoeff
+run             25000
+write_data      data.interface.100ps nocoeff

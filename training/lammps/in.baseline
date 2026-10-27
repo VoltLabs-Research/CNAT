@@ -1,0 +1,11 @@
+# CNA and PTM labels as in na_dataset/lammps/in.cna and in.ptm.
+units           metal
+atom_style      atomic
+read_data       ${dfile}
+pair_style      eam/alloy
+pair_coeff      * * ${pfile} Ni Al
+compute         cna all cna/atom 3.00451
+compute         ptm all ptm/atom default 0.16
+dump            1 all custom 1 ${out} id x y z c_cna c_ptm[1]
+dump_modify     1 sort id
+run             0

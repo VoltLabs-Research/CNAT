@@ -1,0 +1,51 @@
+# Bulk Ni (Purja Pun & Mishin 2009 EAM), protocol of Watanabe et al. 2027, Sec. 2.2:
+#   5 ps NVT at the initial temperature (300 K for FCC; 4000 K for liquid, as in cnat-jax's
+#   Makefile: the paper's 2500 K does not melt a perfect lattice in 5 ps),
+#   5 ps NVT at the target temperature, 10 ps NPT (iso, 0 bar) at the target.
+# Two further 5 ps NPT legs give independent snapshots: "heldout" for testing
+# and "extra" for training the plugin model.
+#
+# lmp -in in.bulk -var phase fcc -var tinit 300 -var temp 1200 -var ncell 20 -var seed 1 -var pfile Mishin-Ni-Al-2009.eam.alloy
+
+log             log.${phase}.${temp}K
+
+units           metal
+boundary        p p p
+atom_style      atomic
+
+lattice         fcc 3.52
+region          box block 0 ${ncell} 0 ${ncell} 0 ${ncell}
+create_box      2 box
+create_atoms    1 box
+
+pair_style      eam/alloy
+pair_coeff      * * ${pfile} Ni Al
+
+thermo          1000
+thermo_style    custom step time temp pe press vol lx
+thermo_modify   flush yes
+
+variable        dt equal 0.001
+timestep        ${dt}
+variable        tdamp equal 100*${dt}
+variable        pdamp equal 1000*${dt}
+
+velocity        all create ${tinit} ${seed} mom yes rot yes dist gaussian
+
+fix             nvt1 all nvt temp ${tinit} ${tinit} ${tdamp}
+run             5000
+unfix           nvt1
+
+fix             nvt2 all nvt temp ${temp} ${temp} ${tdamp}
+run             5000
+unfix           nvt2
+
+fix             npt1 all npt temp ${temp} ${temp} ${tdamp} iso 0.0 0.0 ${pdamp}
+run             10000
+write_data      data.${phase}.${temp}K nocoeff
+
+run             5000
+write_data      data.${phase}.${temp}K.heldout nocoeff
+
+run             5000
+write_data      data.${phase}.${temp}K.extra nocoeff

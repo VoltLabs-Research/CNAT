@@ -1,0 +1,6 @@
+units           metal
+atom_style      atomic
+read_data       ${dfile}
+pair_style      zero 1.0
+pair_coeff      * *
+write_dump      all custom ${out} id type x y z modify sort id
