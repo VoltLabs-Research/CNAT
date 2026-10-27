@@ -1,0 +1,14 @@
+# PTM structure types of a snapshot, independent of the potential (pair_style zero only builds
+# neighbours): strict (rmsd 0.12) to confirm that liquids are disordered, loose (0.2) to confirm
+# that crystals near their melting point keep their structure.
+units           metal
+atom_style      atomic
+read_data       ${dfile}
+pair_style      zero 8.0
+pair_coeff      * *
+mass            * 1.0
+compute         strict all ptm/atom default 0.12
+compute         loose all ptm/atom default 0.2
+dump            1 all custom 1 ${out} id c_strict[1] c_loose[1]
+dump_modify     1 sort id
+run             0
