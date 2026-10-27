@@ -1,0 +1,12 @@
+crystal 300
+crystal 700
+crystal 1100
+crystal 1500
+crystal 1800
+crystal 2100
+liquid 2500
+liquid 3000
+liquid 3500
+glass 300
+glass 900
+glass 1500

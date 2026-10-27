@@ -1,0 +1,67 @@
+# Forsterite (Mg2SiO4), Pedone et al. (2006) potential, snapshots for the sublattice CNAT model.
+# crystal : 3 ps NVT at temp, 5 ps anisotropic NPT at temp and 0 bar, then two 3 ps NPT legs.
+# liquid  : 5 ps NVT at 5000 K (melts), 5 ps isotropic NPT at temp, then two 3 ps legs.
+# glass   : 5 ps at 5000 K, 2 ps NPT at 3000 K, cooled to temp in 10 ps (270 K/ps at 300 K), 3 ps at temp.
+# Short legs and the 8/10 A cutoffs of pedone_mgsio_md.in keep it affordable on a laptop.
+#
+# lmp -in in.fo_md -var phase crystal -var temp 1200 -var seed 1 -var dfile Fo.lmp -var nx 6 -var ny 3 -var nz 5
+
+log             log.fo.${phase}.${temp}K
+
+units           metal
+atom_style      charge
+boundary        p p p
+read_data       ${dfile}
+replicate       ${nx} ${ny} ${nz}
+
+set type 1 charge 1.2
+set type 2 charge 2.4
+set type 3 charge -1.2
+
+include         pedone_mgsio_md.in
+kspace_style    pppm 1.0e-4
+
+neigh_modify    delay 0 every 1 check yes
+thermo          1000
+thermo_style    custom step time temp pe press vol lx ly lz
+thermo_modify   flush yes
+
+timestep        0.001
+variable        tdamp equal 0.1
+variable        pdamp equal 1.0
+
+if "${phase} == crystal" then &
+    "velocity all create ${temp} ${seed} mom yes rot yes dist gaussian" &
+    "fix nvt1 all nvt temp ${temp} ${temp} ${tdamp}" &
+    "run 3000" &
+    "unfix nvt1" &
+    "fix npt1 all npt temp ${temp} ${temp} ${tdamp} aniso 0.0 0.0 ${pdamp}" &
+    "run 5000"
+
+if "${phase} == liquid" then &
+    "velocity all create 5000 ${seed} mom yes rot yes dist gaussian" &
+    "fix nvt1 all nvt temp 5000 5000 ${tdamp}" &
+    "run 5000" &
+    "unfix nvt1" &
+    "fix npt1 all npt temp ${temp} ${temp} ${tdamp} iso 0.0 0.0 ${pdamp}" &
+    "run 5000"
+
+if "${phase} == glass" then &
+    "velocity all create 5000 ${seed} mom yes rot yes dist gaussian" &
+    "fix nvt1 all nvt temp 5000 5000 ${tdamp}" &
+    "run 5000" &
+    "unfix nvt1" &
+    "fix npt0 all npt temp 3000 3000 ${tdamp} iso 0.0 0.0 ${pdamp}" &
+    "run 2000" &
+    "unfix npt0" &
+    "fix npt0 all npt temp 3000 ${temp} ${tdamp} iso 0.0 0.0 ${pdamp}" &
+    "run 10000" &
+    "unfix npt0" &
+    "fix npt1 all npt temp ${temp} ${temp} ${tdamp} iso 0.0 0.0 ${pdamp}" &
+    "run 3000"
+
+write_data      data.fo.${phase}.${temp}K nocoeff
+run             3000
+write_data      data.fo.${phase}.${temp}K.heldout nocoeff
+run             3000
+write_data      data.fo.${phase}.${temp}K.extra nocoeff

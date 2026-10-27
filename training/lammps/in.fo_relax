@@ -1,0 +1,24 @@
+# Forsterite (Mg2SiO4) with the Pedone et al. (2006) potential: relaxes the 28-atom cell of Fo.lmp at
+# 0 GPa to check the parameters against the user's relaxed lattice (a 4.8435, b 10.1864, c 6.0014 A).
+#
+# lmp -in in.fo_relax -var dfile Fo.lmp
+
+units           metal
+atom_style      charge
+boundary        p p p
+read_data       ${dfile}
+replicate       3 2 2
+
+set type 1 charge 1.2
+set type 2 charge 2.4
+set type 3 charge -1.2
+
+include         pedone_mgsio.in
+
+thermo_style    custom step pe press lx ly lz
+fix             1 all box/relax aniso 0.0 vmax 0.001
+minimize        0 1e-10 10000 100000
+variable        a equal lx/3
+variable        b equal ly/2
+variable        c equal lz/2
+print           "RELAXED a ${a} b ${b} c ${c}"

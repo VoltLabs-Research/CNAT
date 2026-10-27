@@ -1,0 +1,10 @@
+# MD variant: 8 A Morse/repulsion and 10 A real-space Coulomb cutoffs, PPPM for the rest.
+# Pedone, Malavasi, Menziani, Cormack & Segre, J. Phys. Chem. B 110 (2006) 11780, Table 1:
+# Morse D (eV), a (1/A), r0 (A) and repulsion C (eV A^12); charges Mg +1.2, Si +2.4, O -1.2.
+# Atom types: 1 Mg, 2 Si, 3 O (as in Fo.lmp).
+pair_style      hybrid/overlay pedone 8.0 coul/long 10.0
+kspace_style    pppm 1.0e-5
+pair_coeff      * * coul/long
+pair_coeff      1 3 pedone 0.038908 2.281000 2.586153 5.0
+pair_coeff      2 3 pedone 0.340554 2.006700 2.100000 1.0
+pair_coeff      3 3 pedone 0.042395 1.379316 3.618701 22.0
