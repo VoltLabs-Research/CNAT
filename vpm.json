@@ -1,0 +1,29 @@
+{
+  "name": "@voltlabs/cnat",
+  "version": "1.0.0",
+  "kind": "workflow",
+  "publisher": "voltlabs",
+  "description": "Transformer-based phase identification at arbitrary points (CNAT; Watanabe, Sato & Shibuta, Comput. Mater. Sci. 2027): labels atoms liquid, FCC, HCP or BCC from their 79 nearest neighbours (or olivine on a forsterite oxygen sublattice), evaluates the phase field on a grid and exports the solid-liquid interface mesh.",
+  "license": "MIT",
+  "homepage": "https://github.com/VoltLabs-Research/CNAT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/VoltLabs-Research/CNAT"
+  },
+  "entrypoints": {
+    "binary": "cnat-plugin.zip",
+    "workflow": "plugin.json"
+  },
+  "platforms": [
+    "linux-x86_64",
+    "darwin-arm64",
+    "windows-x86_64",
+    "wasm-wasm32"
+  ],
+  "coretoolkit": "2.6.1",
+  "files": [
+    "plugin.json",
+    "bin",
+    "lib"
+  ]
+}
