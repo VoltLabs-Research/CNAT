@@ -30,6 +30,9 @@ cnat <input_dump> [output_base] [options]
 | `--interface_smoothing` | `2.0` | Gaussian σ in Å applied to the field before meshing; `0` disables. |
 | `--export_phase_field` | `false` | Export the grid points with their class probabilities. |
 | `--types` | all | Comma-separated atom types that form the neighbour sublattice (e.g. the oxygens of a silicate). |
+| `--topologies` | `auto` | Lattice topologies of the structure contract (below), comma-separated names of the lattice registry; `auto` takes the model's crystal classes, FCC and HCP each with the other; `none` writes no contract. |
+| `--rmsd` | `0.2` | Largest RMSD, in units of the mean neighbour distance, at which a crystalline atom joins the contract. |
+| `--lattice_dir` | bundled | Directory of the lattice topology YAMLs (`lattices/`, the same files as OpenDXA's). |
 
 ## Built-in models
 
@@ -43,8 +46,8 @@ the largest neighbour distance, so a model does not depend on the lattice parame
 | `ni-fcc-liquid` | LIQUID, FCC | Ni, Purja Pun–Mishin 2009 EAM: FCC 600–1700 K, liquid 1500–2600 K (the paper's set) | 1.000 at every temperature |
 | `forsterite-o` | DISORDERED, OLIVINE | Mg2SiO4, Pedone 2006: crystal 300–2100 K, liquid 2500–3500 K, glass 300–1500 K; oxygen neighbours only, run with `--types <O type>` | 0.982 (crystal to 1500 K and liquids 1.000, glass 0.95–0.99) |
 
-Structure ids follow PTM: LIQUID/OTHER 0, FCC 1, HCP 2, BCC 3; for `forsterite-o`, DISORDERED 0 and
-OLIVINE 1. A `metals` model trained without Cu labels Cu as well as the full one, so the models should
+Structure ids are those of the other VOLT structure identifiers: LIQUID/DISORDERED 0, FCC 2, HCP 3,
+BCC 4; a class with no such structure counts up from 1000 (OLIVINE 1001). A `metals` model trained without Cu labels Cu as well as the full one, so the models should
 carry over to other metals of the same structures. Details: `training/README.md`.
 
 On the Ni solid–liquid coexistence of the paper (Sec. 3.2; 153,600 atoms at 1700 K, 1000 × 1000 grid
@@ -67,9 +70,56 @@ brings that to 1.06 without moving the solid fraction (55.3% before and after).
 | `{output_base}_interface_mesh.parquet` (+ `.vertices`, `.facets`) | Solid-Liquid Interface | MeshExporter → glb |
 | `{output_base}_phase_field.parquet` | Phase Field | AtomisticExporter → glb |
 | `{output_base}_cnat.parquet` | Phase Summary | — (listing: atom counts, volume fractions, interface area) |
+| `{output_base}_annotated.dump`, `_clusters.table`, `_cluster_transitions.table`, `_neighbor_lattice.parquet` | Clusters Table, Clusters Transitions, Neighbor Lattice | — (`volt/structure-identification@1`, read by OpenDXA) |
 
 Per-atom and per-point tables carry `structure_id`, `structure_name`, `probability_crystalline`
-(1 − P(class 0), the field of the interface mesh) and one `probability_<class>` column per class.
+(1 − P(class 0), the field of the interface mesh) and one `probability_<class>` column per class. With
+the contract, the atoms table adds `lattice_structure` (the topology the atom joined, or OTHER) and
+`lattice_rmsd`.
+
+## Structure contract (OpenDXA)
+
+CNAT writes the same contract as CNA, PTM and PSM, so OpenDXA, ElasticStrain and LineReconstructionDXA
+can run on its output. CNAT decides where the crystal is and of which class; the neighbour order that
+DXA's Burgers circuits need comes from the lattice topologies, the YAML files of the lattice registry
+under `lattices/` (fcc, hcp, bcc, sc, cubic_diamond, hex_diamond, bct, fct, st, a7, a7_bi, or any file
+added to `--lattice_dir`), not from PTM's or CNA's built-in templates.
+
+Each crystalline atom of the neighbour sublattice is aligned onto every topology: of the proper
+rotations that carry two shell vectors onto two of its nearest neighbours, the one whose one-to-one
+assignment leaves the smallest residual, refined by a least-squares rotation and isotropic scale. It
+keeps the topology its class names unless another fits at least twice as well and two of its shell
+neighbours took that one too: a hot FCC atom stays FCC, a stacking fault becomes HCP even with
+`ni-fcc-liquid`, and an atom that fits HCP alone (thermal noise at the melting point) is OTHER. A class
+with no topology (OLIVINE, or an explicit `--topologies`) takes the best fit. Atoms within `--rmsd`
+become lattice sites in that order, and the shared cluster builder of structure-identification grows
+the crystal clusters, with the rotations taken over all the lattice vectors of a topology as CNA does,
+so the two sublattices of hcp and of the diamonds join one cluster; sc, st and a7, whose bonds lack
+common neighbours, join by orientation as PTM's SC does. With `--types`, the contract holds only the
+sublattice atoms. Disordered atoms are never lattice sites.
+
+OpenDXA's `--reference_topology` takes the same names (e.g. `fcc`).
+
+Checked against PTM (`--rmsd 0.1`) through OpenDXA on a Ni vacancy Frank loop (51,323 atoms, Mishin
+2009 EAM) after 8 ps of NPT, which dissociates into 1/6<112>, 1/6<110> and 1/3<111> segments; the
+energy-minimised frame of each temperature is the reference:
+
+| T | PTM: lattice sites, line length | CNAT: lattice sites, line length | Minimised (PTM) |
+|---|---|---|---|
+| 300 K | 99.2%, 409 Å | 99.3%, 386 Å | — |
+| 1000 K | 97.9%, 365 Å | 98.6%, 352 Å | 437 Å |
+| 1400 K | 77.3%, 296 Å | 93.6%, 343 Å | 423 Å |
+| 1600 K | 52.2%, 74 Å | 86.8%, 322 Å | 397 Å |
+
+Near the melting point CNAT keeps the loop that PTM loses. Most of its shortfall at 1400–1600 K is
+partial-dislocation detail: where the hot stacking fault thins, a Shockley and a stair-rod
+(1/6<112> + 1/6<110> = 1/3<111>) are traced as one Frank segment (121 Å of 1/3<111> at 1600 K against
+32 Å in the minimised frame).
+
+On the solid-liquid coexistence (153,600 atoms at 1700 K, no dislocations), PTM leaves 29% of the atoms
+crystalline and a defect mesh of 55,628 facets; CNAT's contract gives the interface alone (6,688
+facets) and no dislocation segment. Perfect fcc, hcp, bcc, cubic diamond, sc and st lattices each give one cluster,
+and a screw dipole in st (b = c, a lattice PTM has no template for) gives two lines with b = ±[0 0 1.2].
 
 ## Models and training
 

@@ -3,7 +3,7 @@
   "version": "1.0.2",
   "kind": "workflow",
   "publisher": "voltlabs",
-  "description": "Transformer-based phase identification at arbitrary points (CNAT; Watanabe, Sato & Shibuta, Comput. Mater. Sci. 2027): labels atoms liquid, FCC, HCP or BCC from their 79 nearest neighbours (or olivine on a forsterite oxygen sublattice), evaluates the phase field on a grid and exports the solid-liquid interface mesh.",
+  "description": "Transformer-based phase identification at arbitrary points (CNAT; Watanabe, Sato & Shibuta, Comput. Mater. Sci. 2027): labels atoms liquid, FCC, HCP or BCC from their 79 nearest neighbours (or olivine on a forsterite oxygen sublattice), evaluates the phase field on a grid and exports the solid-liquid interface mesh, and writes the structure-identification contract OpenDXA reads (neighbour order from any lattice topology YAML).",
   "license": "MIT",
   "homepage": "https://github.com/VoltLabs-Research/CNAT",
   "repository": {
