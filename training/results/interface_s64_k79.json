@@ -1,0 +1,22 @@
+{
+ "PTM": {
+  "fcc_fraction": 0.535565,
+  "interface_mean_y": 102.87101989073784,
+  "interface_rms": 2.629342924232342,
+  "interface_length_ratio": 1.5430923319940355,
+  "fcc_islands_in_liquid_ge_1A2": 18,
+  "liquid_holes_in_solid_ge_1A2": 136,
+  "mean_region_size_A2": 7.800657244343586,
+  "largest_region_A2": 43.4460847921172
+ },
+ "CNAT": {
+  "fcc_fraction": 0.551474,
+  "interface_mean_y": 104.84254266709335,
+  "interface_rms": 2.2561886818694785,
+  "interface_length_ratio": 1.5598680938216902,
+  "fcc_islands_in_liquid_ge_1A2": 5,
+  "liquid_holes_in_solid_ge_1A2": 3,
+  "mean_region_size_A2": 1.7501474586668304,
+  "largest_region_A2": 4.327637352339799
+ }
+}

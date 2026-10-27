@@ -1,0 +1,1274 @@
+{
+ "heldout": {
+  "overall": 0.9986769230769231,
+  "confusion": [
+   [
+    31982,
+    2,
+    10,
+    6
+   ],
+   [
+    19,
+    17973,
+    4,
+    4
+   ],
+   [
+    10,
+    0,
+    8983,
+    7
+   ],
+   [
+    21,
+    0,
+    3,
+    5976
+   ]
+  ],
+  "rows": [
+   {
+    "metal": "cu",
+    "structure": "LIQUID",
+    "temperature": 1128,
+    "accuracy": 0.999,
+    "predicted": {
+     "LIQUID": 999,
+     "HCP": 1
+    }
+   },
+   {
+    "metal": "cu",
+    "structure": "LIQUID",
+    "temperature": 1261,
+    "accuracy": 0.999,
+    "predicted": {
+     "LIQUID": 999,
+     "HCP": 1
+    }
+   },
+   {
+    "metal": "cu",
+    "structure": "LIQUID",
+    "temperature": 1460,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "cu",
+    "structure": "LIQUID",
+    "temperature": 1659,
+    "accuracy": 0.999,
+    "predicted": {
+     "LIQUID": 999,
+     "HCP": 1
+    }
+   },
+   {
+    "metal": "cu",
+    "structure": "LIQUID",
+    "temperature": 1990,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "cu",
+    "structure": "FCC",
+    "temperature": 464,
+    "accuracy": 1.0,
+    "predicted": {
+     "FCC": 1000
+    }
+   },
+   {
+    "metal": "cu",
+    "structure": "FCC",
+    "temperature": 664,
+    "accuracy": 1.0,
+    "predicted": {
+     "FCC": 1000
+    }
+   },
+   {
+    "metal": "cu",
+    "structure": "FCC",
+    "temperature": 863,
+    "accuracy": 1.0,
+    "predicted": {
+     "FCC": 1000
+    }
+   },
+   {
+    "metal": "cu",
+    "structure": "FCC",
+    "temperature": 1062,
+    "accuracy": 0.999,
+    "predicted": {
+     "LIQUID": 1,
+     "FCC": 999
+    }
+   },
+   {
+    "metal": "cu",
+    "structure": "FCC",
+    "temperature": 1194,
+    "accuracy": 1.0,
+    "predicted": {
+     "FCC": 1000
+    }
+   },
+   {
+    "metal": "cu",
+    "structure": "FCC",
+    "temperature": 1327,
+    "accuracy": 0.985,
+    "predicted": {
+     "LIQUID": 13,
+     "FCC": 985,
+     "HCP": 1,
+     "BCC": 1
+    }
+   },
+   {
+    "metal": "fe",
+    "structure": "LIQUID",
+    "temperature": 1506,
+    "accuracy": 0.998,
+    "predicted": {
+     "LIQUID": 998,
+     "HCP": 1,
+     "BCC": 1
+    }
+   },
+   {
+    "metal": "fe",
+    "structure": "LIQUID",
+    "temperature": 1683,
+    "accuracy": 0.999,
+    "predicted": {
+     "LIQUID": 999,
+     "FCC": 1
+    }
+   },
+   {
+    "metal": "fe",
+    "structure": "LIQUID",
+    "temperature": 1949,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "fe",
+    "structure": "LIQUID",
+    "temperature": 2215,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "fe",
+    "structure": "LIQUID",
+    "temperature": 2658,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "fe",
+    "structure": "BCC",
+    "temperature": 620,
+    "accuracy": 1.0,
+    "predicted": {
+     "BCC": 1000
+    }
+   },
+   {
+    "metal": "fe",
+    "structure": "BCC",
+    "temperature": 886,
+    "accuracy": 1.0,
+    "predicted": {
+     "BCC": 1000
+    }
+   },
+   {
+    "metal": "fe",
+    "structure": "BCC",
+    "temperature": 1152,
+    "accuracy": 1.0,
+    "predicted": {
+     "BCC": 1000
+    }
+   },
+   {
+    "metal": "fe",
+    "structure": "BCC",
+    "temperature": 1418,
+    "accuracy": 1.0,
+    "predicted": {
+     "BCC": 1000
+    }
+   },
+   {
+    "metal": "fe",
+    "structure": "BCC",
+    "temperature": 1595,
+    "accuracy": 0.998,
+    "predicted": {
+     "LIQUID": 1,
+     "HCP": 1,
+     "BCC": 998
+    }
+   },
+   {
+    "metal": "fe",
+    "structure": "BCC",
+    "temperature": 1772,
+    "accuracy": 0.978,
+    "predicted": {
+     "LIQUID": 20,
+     "HCP": 2,
+     "BCC": 978
+    }
+   },
+   {
+    "metal": "mg",
+    "structure": "LIQUID",
+    "temperature": 777,
+    "accuracy": 0.998,
+    "predicted": {
+     "LIQUID": 998,
+     "HCP": 1,
+     "BCC": 1
+    }
+   },
+   {
+    "metal": "mg",
+    "structure": "LIQUID",
+    "temperature": 868,
+    "accuracy": 0.999,
+    "predicted": {
+     "LIQUID": 999,
+     "BCC": 1
+    }
+   },
+   {
+    "metal": "mg",
+    "structure": "LIQUID",
+    "temperature": 1005,
+    "accuracy": 0.999,
+    "predicted": {
+     "LIQUID": 999,
+     "BCC": 1
+    }
+   },
+   {
+    "metal": "mg",
+    "structure": "LIQUID",
+    "temperature": 1142,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "mg",
+    "structure": "LIQUID",
+    "temperature": 1371,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "mg",
+    "structure": "HCP",
+    "temperature": 320,
+    "accuracy": 1.0,
+    "predicted": {
+     "HCP": 1000
+    }
+   },
+   {
+    "metal": "mg",
+    "structure": "HCP",
+    "temperature": 457,
+    "accuracy": 1.0,
+    "predicted": {
+     "HCP": 1000
+    }
+   },
+   {
+    "metal": "mg",
+    "structure": "HCP",
+    "temperature": 594,
+    "accuracy": 1.0,
+    "predicted": {
+     "HCP": 1000
+    }
+   },
+   {
+    "metal": "mg",
+    "structure": "HCP",
+    "temperature": 731,
+    "accuracy": 1.0,
+    "predicted": {
+     "HCP": 1000
+    }
+   },
+   {
+    "metal": "mg",
+    "structure": "HCP",
+    "temperature": 823,
+    "accuracy": 0.998,
+    "predicted": {
+     "LIQUID": 1,
+     "HCP": 998,
+     "BCC": 1
+    }
+   },
+   {
+    "metal": "mg",
+    "structure": "HCP",
+    "temperature": 914,
+    "accuracy": 0.985,
+    "predicted": {
+     "LIQUID": 9,
+     "HCP": 985,
+     "BCC": 6
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "LIQUID",
+    "temperature": 1500,
+    "accuracy": 0.995,
+    "predicted": {
+     "LIQUID": 995,
+     "HCP": 4,
+     "BCC": 1
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "LIQUID",
+    "temperature": 1600,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "LIQUID",
+    "temperature": 1700,
+    "accuracy": 0.998,
+    "predicted": {
+     "LIQUID": 998,
+     "FCC": 1,
+     "HCP": 1
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "LIQUID",
+    "temperature": 1800,
+    "accuracy": 0.999,
+    "predicted": {
+     "LIQUID": 999,
+     "BCC": 1
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "LIQUID",
+    "temperature": 1900,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "LIQUID",
+    "temperature": 2000,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "LIQUID",
+    "temperature": 2100,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "LIQUID",
+    "temperature": 2200,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "LIQUID",
+    "temperature": 2300,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "LIQUID",
+    "temperature": 2400,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "LIQUID",
+    "temperature": 2500,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "LIQUID",
+    "temperature": 2600,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "FCC",
+    "temperature": 600,
+    "accuracy": 1.0,
+    "predicted": {
+     "FCC": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "FCC",
+    "temperature": 700,
+    "accuracy": 1.0,
+    "predicted": {
+     "FCC": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "FCC",
+    "temperature": 800,
+    "accuracy": 1.0,
+    "predicted": {
+     "FCC": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "FCC",
+    "temperature": 900,
+    "accuracy": 1.0,
+    "predicted": {
+     "FCC": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "FCC",
+    "temperature": 1000,
+    "accuracy": 1.0,
+    "predicted": {
+     "FCC": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "FCC",
+    "temperature": 1100,
+    "accuracy": 1.0,
+    "predicted": {
+     "FCC": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "FCC",
+    "temperature": 1200,
+    "accuracy": 1.0,
+    "predicted": {
+     "FCC": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "FCC",
+    "temperature": 1300,
+    "accuracy": 1.0,
+    "predicted": {
+     "FCC": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "FCC",
+    "temperature": 1400,
+    "accuracy": 1.0,
+    "predicted": {
+     "FCC": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "FCC",
+    "temperature": 1500,
+    "accuracy": 0.999,
+    "predicted": {
+     "FCC": 999,
+     "HCP": 1
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "FCC",
+    "temperature": 1600,
+    "accuracy": 1.0,
+    "predicted": {
+     "FCC": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "FCC",
+    "temperature": 1700,
+    "accuracy": 0.99,
+    "predicted": {
+     "LIQUID": 5,
+     "FCC": 990,
+     "HCP": 2,
+     "BCC": 3
+    }
+   },
+   {
+    "metal": "zr",
+    "structure": "LIQUID",
+    "temperature": 1707,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "zr",
+    "structure": "LIQUID",
+    "temperature": 1908,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "zr",
+    "structure": "LIQUID",
+    "temperature": 2209,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "zr",
+    "structure": "LIQUID",
+    "temperature": 2510,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "zr",
+    "structure": "LIQUID",
+    "temperature": 3012,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "zr",
+    "structure": "HCP",
+    "temperature": 700,
+    "accuracy": 1.0,
+    "predicted": {
+     "HCP": 1000
+    }
+   },
+   {
+    "metal": "zr",
+    "structure": "HCP",
+    "temperature": 900,
+    "accuracy": 1.0,
+    "predicted": {
+     "HCP": 1000
+    }
+   },
+   {
+    "metal": "zr",
+    "structure": "HCP",
+    "temperature": 1100,
+    "accuracy": 1.0,
+    "predicted": {
+     "HCP": 1000
+    }
+   }
+  ]
+ },
+ "atoms": {
+  "overall": 0.9996461538461539,
+  "confusion": [
+   [
+    31995,
+    1,
+    1,
+    3
+   ],
+   [
+    2,
+    17998,
+    0,
+    0
+   ],
+   [
+    7,
+    0,
+    8993,
+    0
+   ],
+   [
+    8,
+    0,
+    1,
+    5991
+   ]
+  ],
+  "rows": [
+   {
+    "metal": "cu",
+    "structure": "LIQUID",
+    "temperature": 1128,
+    "accuracy": 0.998,
+    "predicted": {
+     "LIQUID": 998,
+     "FCC": 1,
+     "BCC": 1
+    }
+   },
+   {
+    "metal": "cu",
+    "structure": "LIQUID",
+    "temperature": 1261,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "cu",
+    "structure": "LIQUID",
+    "temperature": 1460,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "cu",
+    "structure": "LIQUID",
+    "temperature": 1659,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "cu",
+    "structure": "LIQUID",
+    "temperature": 1990,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "cu",
+    "structure": "FCC",
+    "temperature": 464,
+    "accuracy": 1.0,
+    "predicted": {
+     "FCC": 1000
+    }
+   },
+   {
+    "metal": "cu",
+    "structure": "FCC",
+    "temperature": 664,
+    "accuracy": 1.0,
+    "predicted": {
+     "FCC": 1000
+    }
+   },
+   {
+    "metal": "cu",
+    "structure": "FCC",
+    "temperature": 863,
+    "accuracy": 1.0,
+    "predicted": {
+     "FCC": 1000
+    }
+   },
+   {
+    "metal": "cu",
+    "structure": "FCC",
+    "temperature": 1062,
+    "accuracy": 1.0,
+    "predicted": {
+     "FCC": 1000
+    }
+   },
+   {
+    "metal": "cu",
+    "structure": "FCC",
+    "temperature": 1194,
+    "accuracy": 1.0,
+    "predicted": {
+     "FCC": 1000
+    }
+   },
+   {
+    "metal": "cu",
+    "structure": "FCC",
+    "temperature": 1327,
+    "accuracy": 0.998,
+    "predicted": {
+     "LIQUID": 2,
+     "FCC": 998
+    }
+   },
+   {
+    "metal": "fe",
+    "structure": "LIQUID",
+    "temperature": 1506,
+    "accuracy": 0.999,
+    "predicted": {
+     "LIQUID": 999,
+     "BCC": 1
+    }
+   },
+   {
+    "metal": "fe",
+    "structure": "LIQUID",
+    "temperature": 1683,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "fe",
+    "structure": "LIQUID",
+    "temperature": 1949,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "fe",
+    "structure": "LIQUID",
+    "temperature": 2215,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "fe",
+    "structure": "LIQUID",
+    "temperature": 2658,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "fe",
+    "structure": "BCC",
+    "temperature": 620,
+    "accuracy": 1.0,
+    "predicted": {
+     "BCC": 1000
+    }
+   },
+   {
+    "metal": "fe",
+    "structure": "BCC",
+    "temperature": 886,
+    "accuracy": 1.0,
+    "predicted": {
+     "BCC": 1000
+    }
+   },
+   {
+    "metal": "fe",
+    "structure": "BCC",
+    "temperature": 1152,
+    "accuracy": 1.0,
+    "predicted": {
+     "BCC": 1000
+    }
+   },
+   {
+    "metal": "fe",
+    "structure": "BCC",
+    "temperature": 1418,
+    "accuracy": 1.0,
+    "predicted": {
+     "BCC": 1000
+    }
+   },
+   {
+    "metal": "fe",
+    "structure": "BCC",
+    "temperature": 1595,
+    "accuracy": 1.0,
+    "predicted": {
+     "BCC": 1000
+    }
+   },
+   {
+    "metal": "fe",
+    "structure": "BCC",
+    "temperature": 1772,
+    "accuracy": 0.991,
+    "predicted": {
+     "LIQUID": 8,
+     "HCP": 1,
+     "BCC": 991
+    }
+   },
+   {
+    "metal": "mg",
+    "structure": "LIQUID",
+    "temperature": 777,
+    "accuracy": 0.998,
+    "predicted": {
+     "LIQUID": 998,
+     "HCP": 1,
+     "BCC": 1
+    }
+   },
+   {
+    "metal": "mg",
+    "structure": "LIQUID",
+    "temperature": 868,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "mg",
+    "structure": "LIQUID",
+    "temperature": 1005,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "mg",
+    "structure": "LIQUID",
+    "temperature": 1142,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "mg",
+    "structure": "LIQUID",
+    "temperature": 1371,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "mg",
+    "structure": "HCP",
+    "temperature": 320,
+    "accuracy": 1.0,
+    "predicted": {
+     "HCP": 1000
+    }
+   },
+   {
+    "metal": "mg",
+    "structure": "HCP",
+    "temperature": 457,
+    "accuracy": 1.0,
+    "predicted": {
+     "HCP": 1000
+    }
+   },
+   {
+    "metal": "mg",
+    "structure": "HCP",
+    "temperature": 594,
+    "accuracy": 1.0,
+    "predicted": {
+     "HCP": 1000
+    }
+   },
+   {
+    "metal": "mg",
+    "structure": "HCP",
+    "temperature": 731,
+    "accuracy": 1.0,
+    "predicted": {
+     "HCP": 1000
+    }
+   },
+   {
+    "metal": "mg",
+    "structure": "HCP",
+    "temperature": 823,
+    "accuracy": 1.0,
+    "predicted": {
+     "HCP": 1000
+    }
+   },
+   {
+    "metal": "mg",
+    "structure": "HCP",
+    "temperature": 914,
+    "accuracy": 0.993,
+    "predicted": {
+     "LIQUID": 7,
+     "HCP": 993
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "LIQUID",
+    "temperature": 1500,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "LIQUID",
+    "temperature": 1600,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "LIQUID",
+    "temperature": 1700,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "LIQUID",
+    "temperature": 1800,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "LIQUID",
+    "temperature": 1900,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "LIQUID",
+    "temperature": 2000,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "LIQUID",
+    "temperature": 2100,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "LIQUID",
+    "temperature": 2200,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "LIQUID",
+    "temperature": 2300,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "LIQUID",
+    "temperature": 2400,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "LIQUID",
+    "temperature": 2500,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "LIQUID",
+    "temperature": 2600,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "FCC",
+    "temperature": 600,
+    "accuracy": 1.0,
+    "predicted": {
+     "FCC": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "FCC",
+    "temperature": 700,
+    "accuracy": 1.0,
+    "predicted": {
+     "FCC": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "FCC",
+    "temperature": 800,
+    "accuracy": 1.0,
+    "predicted": {
+     "FCC": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "FCC",
+    "temperature": 900,
+    "accuracy": 1.0,
+    "predicted": {
+     "FCC": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "FCC",
+    "temperature": 1000,
+    "accuracy": 1.0,
+    "predicted": {
+     "FCC": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "FCC",
+    "temperature": 1100,
+    "accuracy": 1.0,
+    "predicted": {
+     "FCC": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "FCC",
+    "temperature": 1200,
+    "accuracy": 1.0,
+    "predicted": {
+     "FCC": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "FCC",
+    "temperature": 1300,
+    "accuracy": 1.0,
+    "predicted": {
+     "FCC": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "FCC",
+    "temperature": 1400,
+    "accuracy": 1.0,
+    "predicted": {
+     "FCC": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "FCC",
+    "temperature": 1500,
+    "accuracy": 1.0,
+    "predicted": {
+     "FCC": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "FCC",
+    "temperature": 1600,
+    "accuracy": 1.0,
+    "predicted": {
+     "FCC": 1000
+    }
+   },
+   {
+    "metal": "ni",
+    "structure": "FCC",
+    "temperature": 1700,
+    "accuracy": 1.0,
+    "predicted": {
+     "FCC": 1000
+    }
+   },
+   {
+    "metal": "zr",
+    "structure": "LIQUID",
+    "temperature": 1707,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "zr",
+    "structure": "LIQUID",
+    "temperature": 1908,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "zr",
+    "structure": "LIQUID",
+    "temperature": 2209,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "zr",
+    "structure": "LIQUID",
+    "temperature": 2510,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "zr",
+    "structure": "LIQUID",
+    "temperature": 3012,
+    "accuracy": 1.0,
+    "predicted": {
+     "LIQUID": 1000
+    }
+   },
+   {
+    "metal": "zr",
+    "structure": "HCP",
+    "temperature": 700,
+    "accuracy": 1.0,
+    "predicted": {
+     "HCP": 1000
+    }
+   },
+   {
+    "metal": "zr",
+    "structure": "HCP",
+    "temperature": 900,
+    "accuracy": 1.0,
+    "predicted": {
+     "HCP": 1000
+    }
+   },
+   {
+    "metal": "zr",
+    "structure": "HCP",
+    "temperature": 1100,
+    "accuracy": 1.0,
+    "predicted": {
+     "HCP": 1000
+    }
+   }
+  ]
+ }
+}
