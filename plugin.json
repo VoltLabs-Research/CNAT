@@ -10,12 +10,12 @@
         },
         "data": {
           "modifier": {
-            "name": "CNAT: Comprehensive Neighbor Analysis Transformer",
+            "name": "CNAT Phase Identification",
             "key": "cnat",
             "icon": "HiCubeTransparent",
             "author": "VoltLabs Research",
             "license": "MIT",
-            "version": "1.0.1",
+            "version": "1.0.2",
             "homepage": "https://github.com/VoltLabs-Research/CNAT",
             "description": "Identifies the phase at atoms and at arbitrary points with a Transformer over the 79 nearest neighbours (CNAT; Watanabe, Sato & Shibuta, Comput. Mater. Sci. 2027), and exports the phase field and the solid-liquid interface. Built-in models: metals (liquid, FCC, HCP, BCC), Ni FCC/liquid (the paper's), and forsterite on its oxygen sublattice (olivine/disordered)."
           }
@@ -39,28 +39,28 @@
                 "options": [
                   {
                     "key": "metals",
-                    "label": "Metals: liquid, FCC, HCP, BCC"
+                    "label": "Metals"
                   },
                   {
                     "key": "ni-fcc-liquid",
-                    "label": "Ni FCC / liquid (paper)"
+                    "label": "Ni FCC/Liquid"
                   },
                   {
                     "key": "forsterite-o",
-                    "label": "Forsterite, oxygen sublattice: olivine / disordered"
+                    "label": "Forsterite (O)"
                   }
                 ]
               },
               {
                 "argument": "types",
                 "type": "string",
-                "label": "Neighbour Atom Types (e.g. 3 for the oxygens; empty = all)",
+                "label": "Neighbor Types",
                 "default": ""
               },
               {
                 "argument": "threshold",
                 "type": "number",
-                "label": "Crystalline Probability Threshold",
+                "label": "Crystalline Threshold",
                 "default": 0.5,
                 "min": 0.01,
                 "max": 0.99,
@@ -69,7 +69,7 @@
               {
                 "argument": "grid_spacing",
                 "type": "number",
-                "label": "Phase Field Grid Spacing (A, 0 = atoms only)",
+                "label": "Grid Spacing (Å)",
                 "default": 2.0,
                 "min": 0,
                 "step": 0.5
@@ -83,7 +83,7 @@
               {
                 "argument": "interface_smoothing",
                 "type": "number",
-                "label": "Interface Smoothing (A)",
+                "label": "Mesh Smoothing (Å)",
                 "default": 2.0,
                 "min": 0,
                 "step": 0.5
@@ -91,7 +91,7 @@
               {
                 "argument": "export_phase_field",
                 "type": "boolean",
-                "label": "Export Phase Field Points",
+                "label": "Export Phase Field",
                 "default": false
               }
             ]
@@ -376,7 +376,7 @@
               "tables": [
                 {
                   "source": "structure_counts",
-                  "title": "Atoms",
+                  "title": "Phase analysis results",
                   "label": "structure_name",
                   "colorBy": "structure_name",
                   "colors": {
