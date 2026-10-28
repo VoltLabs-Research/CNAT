@@ -45,9 +45,11 @@ the largest neighbour distance, so a model does not depend on the lattice parame
 | `metals` (default) | LIQUID, FCC, HCP, BCC | Ni, Cu (FCC), Fe (BCC), Mg, Zr (HCP) EAM, crystals 0.3–1.0 Tm, liquids 0.85–1.5 Tm | 0.9987 (at atoms 0.9995); at Tm Cu 0.993, Fe 0.979, Mg 0.982, against PTM 0.948, 0.874, 0.964 |
 | `ni-fcc-liquid` | LIQUID, FCC | Ni, Purja Pun–Mishin 2009 EAM: FCC 600–1700 K, liquid 1500–2600 K (the paper's set) | 1.000 at every temperature |
 | `forsterite-o` | DISORDERED, OLIVINE | Mg2SiO4, Pedone 2006: crystal 300–2100 K, liquid 2500–3500 K, glass 300–1500 K; oxygen neighbours only (type 3, stored with the model; pass `--types` if the oxygens have another type) | 0.982 (crystal to 1500 K and liquids 1.000, glass 0.95–0.99) |
+| `al2sio5` | DISORDERED, KYANITE, ANDALUSITE, SILLIMANITE | Al2SiO5, Pedone 2006: the three polymorphs 300–1500 K, liquid 3000–3500 K, glass 300–1500 K; Al and Si neighbours (types 1, 2, stored with the model) | 0.9994; labels unseen Al2SiO5 phases with high confidence (training README) |
 
 Structure ids are those of the other VOLT structure identifiers: LIQUID/DISORDERED 0, FCC 2, HCP 3,
-BCC 4; a class with no such structure counts up from 1000 (OLIVINE 1001). A `metals` model trained without Cu labels Cu as well as the full one, so the models should
+BCC 4; the other crystal classes of the built-in models keep one id each, OLIVINE 1001, KYANITE 1002,
+ANDALUSITE 1003, SILLIMANITE 1004, and those of any other model count up from 1100. A `metals` model trained without Cu labels Cu as well as the full one, so the models should
 carry over to other metals of the same structures. Details: `training/README.md`.
 
 On the Ni solid–liquid coexistence of the paper (Sec. 3.2; 153,600 atoms at 1700 K, 1000 × 1000 grid
@@ -103,8 +105,9 @@ sublattice atoms. Disordered atoms are never lattice sites.
 Every crystal class of a model carries the crystal it was trained on, so the contract needs no option
 for any phase: a lattice topology of the registry (`metals`: FCC, HCP and BCC; `ni-fcc-liquid`: FCC),
 or the reference cell its training crystal was built from (`forsterite-o`: OLIVINE, the 28-atom
-Pedone cell of `training/lammps/Fo.lmp`). The model also stores the neighbour types it was trained
-with, so `--model forsterite-o` alone writes the forsterite contract.
+Pedone cell of `training/lammps/Fo.lmp`; `al2sio5`: the kyanite, andalusite and sillimanite cells it was
+trained on). The model also stores the neighbour types it was trained with, so `--model forsterite-o`
+alone writes the forsterite contract.
 
 A cell is not one registry topology: every site of its sparsest sublattice (the species with the
 fewest atoms in the cell, Si in forsterite) becomes a topology of its own, whose shell is the site's
@@ -123,8 +126,14 @@ and a seed no neighbour joined, are no lattice sites. Grains join into clusters 
 On Fo_Disloc (135,408 atoms; a forsterite slab with a ~4° twist boundary), `--model forsterite-o` and
 OpenDXA give the two a[100] screws (b = 4.84 Å, 341 Å of the 342 Å that two lines across the cell
 make) and the two c[001] screws (b = 6.00 Å, 274 Å of 280 Å), with 20 Å of short segments where they
-cross; 15,604 of the 15,769 crystalline Si in one cluster. Kyanite cases of the multi-site contract
-(the Al sites of `Kyanite.lmp`) give the full line with the exact b at σ 0.1 Å for all six fixtures.
+cross; 15,592 of the 15,769 crystalline Si in one cluster and 12 in a second. With `--model al2sio5` alone
+(contract on Si) the six kyanite dislocation fixtures at σ 0.1 Å and twelve 900–1500 K MD frames of the
+[100] and [001] screws give the exact b and no other segment; the hot [001] lines are wavy (up to 49 Å
+in a 28 Å cell), the core resolved only to the Si spacing. Perfect cells and 300–1500 K bulk MD of the
+three polymorphs give one cluster and no segment, except andalusite at 1500 K, where a layer of 64 Si
+takes a setting turned by 120°: the 14-neighbour Si shell of andalusite is nearly invariant under that
+turn, so its grain grows apart (no segment in the perfect crystal, but a circuit through both settings
+around a dislocation would not close on a lattice vector).
 
 To give a model its crystals, pass `--crystal CLASS=topology` or `--crystal CLASS=cell.lmp` and
 `--neighbor_types` to `export_model.py`, or to `set_crystals.py` for an exported model (only the

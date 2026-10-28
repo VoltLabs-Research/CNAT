@@ -17,6 +17,7 @@
 #include <tbb/parallel_for.h>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
@@ -72,13 +73,18 @@ std::string lowercase(std::string s) {
 }
 
 // Structure id of every class: StructureType's when the class names one of its structures (FCC, HCP,
-// BCC, ...), so CNAT's atoms read as the other producers'; class 0 is OTHER, and the other crystal
-// classes count up from kCustomTopologyTypeBase.
+// BCC, ...), so CNAT's atoms read as the other producers'; class 0 is OTHER. The other crystal classes
+// of the built-in models keep one id each across models (plugin.json names them); those of any other
+// model count up from kCustomTopologyTypeBase + 100.
 std::vector<int> structureIds(const std::vector<std::string>& names) {
+    static const std::array<const char*, 4> kNamedPhases = {"OLIVINE", "KYANITE", "ANDALUSITE", "SILLIMANITE"};
     std::vector<int> ids(names.size(), StructureType::OTHER);
     for (std::size_t c = 1; c < names.size(); ++c) {
         const int known = structureTypeOfName(names[c]);
-        ids[c] = known != StructureType::OTHER ? known : kCustomTopologyTypeBase + static_cast<int>(c);
+        const auto named = std::ranges::find(kNamedPhases, names[c]);
+        ids[c] = known != StructureType::OTHER ? known
+               : named != kNamedPhases.end() ? kCustomTopologyTypeBase + 1 + static_cast<int>(named - kNamedPhases.begin())
+               : kCustomTopologyTypeBase + 100 + static_cast<int>(c);
     }
     return ids;
 }

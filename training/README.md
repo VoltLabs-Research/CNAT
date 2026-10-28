@@ -94,8 +94,28 @@ cation positions; it keeps crystals with ≥ 95% of atoms within 1 Å of their s
 snapshots with ≤ 30%.
 
 Held-out 0.982: crystal 300-1500 K and liquids 1.000, crystal 1800 K 0.91, glass 300-900 K 0.95-0.97.
-Run with `--model forsterite-o --types <oxygen type>`. On Fo_Disloc (a 135,408-atom slab with a twist
+Exported with `--crystal OLIVINE=lammps/Fo.lmp --neighbor_types 3`, so `--model forsterite-o` alone
+runs on the oxygens and writes the structure contract on the Si of that cell. On Fo_Disloc (a 135,408-atom slab with a twist
 boundary of four screw dislocations) the interior is 99.8% olivine except along the two a[100] screw
 lines at x ≈ 50 and 119 Å, which come out disordered over the whole cell; the two c[001] screws are
 only faintly marked, and the outer ~4 Å of the free surfaces read as disordered because the model has
 not seen vacuum (`results/fo_disloc_cnat.png`).
+
+## 4. Al2SiO5 on its cation sublattice: `al2sio5`
+
+Kyanite, andalusite and sillimanite cells from COD 9000720, 9000715 and 9000710 (Winter & Ghose 1979),
+converted by `cif_to_lammps.py` to `lammps/{kyanite,andalusite,sillimanite}.lmp` (types 1 Al, 2 Si,
+3 O). Pedone et al. 2006 with Al-O D 0.361581, a 1.900442, r0 2.164818, C 0.9 (`lammps/pedone_alsio_md.in`).
+`lammps/in.alsio_md` (triclinic NPT, 2,560 atoms): the three polymorphs at 300, 900 and 1500 K, liquids
+at 3000 and 3500 K after a 5000 K melt, and glasses quenched to 300, 900 and 1500 K.
+`make_al2sio5_dataset.py --neighbor_types 1 2` takes the Al and Si as neighbours, with the periodic
+images of the triclinic cell; same on-site rules as forsterite.
+
+Held-out 0.9994. Exported with `--crystal KYANITE=lammps/kyanite.lmp --crystal ANDALUSITE=lammps/andalusite.lmp
+--crystal SILLIMANITE=lammps/sillimanite.lmp --neighbor_types 1,2`.
+
+Known limitation: the model has seen only these phases, their melt and glass. On a kyanite sample
+whose non-kyanite part is a phase it never saw (Kyanite_010), it labels 39% of what PSM leaves OTHER
+as KYANITE with a median confidence of 0.998, although only 40% of those Al are six-fold coordinated
+(100% in kyanite): confident false positives on the unseen phase. Check the Al coordination where
+it matters, or train with that phase as a negative.

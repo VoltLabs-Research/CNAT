@@ -1,0 +1,9 @@
+# Pedone, Malavasi, Menziani, Cormack & Segre, J. Phys. Chem. B 110 (2006) 11780, Table 1, for Al2SiO5:
+# Morse D (eV), a (1/A), r0 (A) and repulsion C (eV A^12); charges Al +1.8, Si +2.4, O -1.2.
+# Atom types: 1 Al, 2 Si, 3 O. MD cutoffs: 8 A Morse/repulsion, 10 A real-space Coulomb, PPPM beyond.
+pair_style      hybrid/overlay pedone 8.0 coul/long 10.0
+kspace_style    pppm 1.0e-4
+pair_coeff      * * coul/long
+pair_coeff      1 3 pedone 0.361581 1.900442 2.164818 0.9
+pair_coeff      2 3 pedone 0.340554 2.006700 2.100000 1.0
+pair_coeff      3 3 pedone 0.042395 1.379316 3.618701 22.0

@@ -17,6 +17,7 @@ set(CNAT_MODELS
     "${CMAKE_CURRENT_SOURCE_DIR}/models/metals.cnat"
     "${CMAKE_CURRENT_SOURCE_DIR}/models/ni-fcc-liquid.cnat"
     "${CMAKE_CURRENT_SOURCE_DIR}/models/forsterite-o.cnat"
+    "${CMAKE_CURRENT_SOURCE_DIR}/models/al2sio5.cnat"
     CACHE STRING "CNAT models built into the plugin binary")
 set(_embedded_model "${CMAKE_CURRENT_BINARY_DIR}/cnat_embedded_models.cpp")
 string(REPLACE ";" "|" _model_list "${CNAT_MODELS}")
