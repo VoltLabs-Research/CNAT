@@ -32,6 +32,10 @@ public:
     void setTopologies(std::string topologies) { _topologies = std::move(topologies); }
     void setLatticeDir(std::string directory) { _latticeDir = std::move(directory); }
     void setRmsd(double rmsd) { _rmsd = rmsd; }
+    void setCell(std::string path) { _cell = std::move(path); }
+    void setCellTypes(std::string types) { _cellTypes = std::move(types); }
+    void setCellCutoff(double cutoff) { _cellCutoff = cutoff; }
+    void setContractTypes(std::string types) { _contractTypes = std::move(types); }
 
     json compute(const LammpsParser::Frame& frame, const std::string& outputBase);
 
@@ -46,6 +50,10 @@ private:
     std::string _topologies = "auto";
     std::string _latticeDir;
     double _rmsd = 0.2;
+    std::string _cell;
+    std::string _cellTypes;
+    double _cellCutoff = 0.0;
+    std::string _contractTypes;
 };
 
 }

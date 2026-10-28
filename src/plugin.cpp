@@ -17,6 +17,11 @@ static const std::vector<OptionBinding<S>> bindings = {
     opt({"--lattice_dir", "path", "Directory of the lattice topology YAMLs", "", {}, "share/volt/lattices"},
         std::function<void(S&, const OptsMap&)>([](S& s, const OptsMap& opts) { s.setLatticeDir(CLI::getString(opts, "--lattice_dir", "")); })),
     opt("--rmsd", "Largest RMSD, in units of the mean neighbour distance, at which a crystalline atom joins the structure contract; above it the atom is OTHER", 0.2, &S::setRmsd),
+    opt({"--cell", "path", "Reference crystal (LAMMPS data, orthogonal or triclinic) whose every site of --cell_types becomes a topology of the structure contract, for multi-site lattices such as kyanite's Al; the class named after its file stem prefers it", "", {}, ""},
+        std::function<void(S&, const OptsMap&)>([](S& s, const OptsMap& opts) { s.setCell(CLI::getString(opts, "--cell", "")); })),
+    opt("--cell_types", "Comma-separated atom types of the --cell sites; empty uses every atom of the cell", "", &S::setCellTypes),
+    opt("--cell_cutoff", "Neighbour cutoff in A of the --cell sites; 0 takes the widest gap that leaves every site 12 to 18 neighbours", 0.0, &S::setCellCutoff),
+    opt("--contract_types", "Comma-separated atom types that are lattice sites of the structure contract; empty uses --types", "", &S::setContractTypes),
 };
 
 VOLT_SERVICE_PLUGIN("volt-cnat", "CNAT: Comprehensive Neighbor Analysis Transformer", S, bindings)

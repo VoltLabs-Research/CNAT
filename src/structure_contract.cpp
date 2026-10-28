@@ -78,6 +78,128 @@ struct AlignmentTally {
     std::vector<std::size_t> overrides;
 };
 
+// Two neighbours of a multi-site cell join one cluster when their orientations differ by less than this:
+// thermal noise turns a neighbourhood by a degree or two, and a low-angle boundary turns it by its
+// misorientation only across its dislocation cores, so a grain stays one cluster bond by bond.
+constexpr double kCellMisorientationDegrees = 10.0;
+// ...and when each atom has a shell vector within this angle (cosine) of the bond between them.
+constexpr double kCellBondAlignment = 0.95;
+
+// Cluster rule of the sites of a multi-site cell (loadCellTopologies), which are topologies of their own
+// that share a name and the crystal frame and have the identity as their only symmetry: atoms of any of
+// them grow into one cluster by orientation, and their transitions are the relative orientations. The
+// shared orientation rule, which takes one structure type at a time, keeps the other topologies that
+// need it; the rest keep the overlap test. Atoms of different types are joined only within the cell.
+class ContractRuleProvider final : public ClusterRuleProvider {
+public:
+    ContractRuleProvider(std::shared_ptr<const std::vector<OrientationClusterAtomState>> orientations,
+                         std::vector<int> orientationTypes, std::vector<int> cellTypes)
+        : _orientations(orientations),
+          _orientationRule(orientationTypes.empty() ? nullptr : std::make_shared<OrientationClusterRuleProvider>(std::move(orientations))),
+          _orientationTypes(std::move(orientationTypes)),
+          _cellTypes(std::move(cellTypes)),
+          _minimumTrace(1.0 + 2.0 * std::cos(kCellMisorientationDegrees * PI / 180.0)) {}
+
+    bool allowsCrossStructureGrowth() const override { return !_cellTypes.empty(); }
+
+    void initializeClusterSeed(const StructureAnalysis& analysis, const AnalysisContext& context, Cluster& cluster,
+                               int seedAtomIndex, int structureType) const override {
+        if (_orientationRule && isOrientation(structureType))
+            _orientationRule->initializeClusterSeed(analysis, context, cluster, seedAtomIndex, structureType);
+    }
+
+    ClusterRuleDecision tryAssignNeighbor(const StructureAnalysis& analysis, const AnalysisContext& context,
+                                          const Cluster& cluster, int currentAtomIndex, int neighborAtomIndex,
+                                          int neighborIndex, int structureType, int& outNeighborSymmetry) const override {
+        const int neighborType = context.structureTypes->getInt(neighborAtomIndex);
+        if (isCell(structureType) || isCell(neighborType)) {
+            if (!isCell(structureType) || !isCell(neighborType)) return ClusterRuleDecision::Rejected;
+            return assignCellNeighbor(analysis, context, currentAtomIndex, neighborAtomIndex, neighborIndex, structureType,
+                                      neighborType, outNeighborSymmetry);
+        }
+        // allowsCrossStructureGrowth() is global; other structure types never join across, as without a cell.
+        if (neighborType != structureType) return ClusterRuleDecision::Rejected;
+        if (!_orientationRule || !isOrientation(structureType)) return ClusterRuleDecision::Unhandled;
+        return _orientationRule->tryAssignNeighbor(analysis, context, cluster, currentAtomIndex, neighborAtomIndex,
+                                                   neighborIndex, structureType, outNeighborSymmetry);
+    }
+
+    ClusterRuleDecision tryCalculateTransition(const StructureAnalysis& analysis, const AnalysisContext& context,
+                                               int atomIndex, int neighborAtomIndex, int neighborIndex,
+                                               Matrix3& outTransition) const override {
+        const int type = context.structureTypes->getInt(atomIndex);
+        const int neighborType = context.structureTypes->getInt(neighborAtomIndex);
+        if (isCell(type) || isCell(neighborType)) {
+            if (!isCell(type) || !isCell(neighborType)) return ClusterRuleDecision::Rejected;
+            const Matrix3* atom = orientation(atomIndex);
+            const Matrix3* neighbor = orientation(neighborAtomIndex);
+            if (!atom || !neighbor || !orthonormalizeMatrix(Matrix3(neighbor->transposed() * *atom), outTransition))
+                return ClusterRuleDecision::Rejected;
+            return ClusterRuleDecision::Accepted;
+        }
+        if (!_orientationRule || !isOrientation(type)) return ClusterRuleDecision::Unhandled;
+        return _orientationRule->tryCalculateTransition(analysis, context, atomIndex, neighborAtomIndex, neighborIndex, outTransition);
+    }
+
+private:
+    bool isCell(int type) const { return std::ranges::find(_cellTypes, type) != _cellTypes.end(); }
+    bool isOrientation(int type) const { return std::ranges::find(_orientationTypes, type) != _orientationTypes.end(); }
+
+    const Matrix3* orientation(int atom) const {
+        const auto& state = (*_orientations)[static_cast<std::size_t>(atom)];
+        return state.valid ? &state.orientation : nullptr;
+    }
+
+    // Largest cosine between the bond and a shell vector of the atom, in its orientation.
+    static double bondAlignment(const StructureAnalysis& analysis, int type, const Matrix3& rotation, const Vector3& bond) {
+        double best = -1.0;
+        for (int k = 0; k < analysis.coordinationNumber(type); ++k) {
+            const Vector3 predicted = rotation * analysis.latticeVector(type, k);
+            const double length = predicted.length();
+            if (length > EPSILON) best = std::max(best, predicted.dot(bond) / length);
+        }
+        return best;
+    }
+
+    ClusterRuleDecision assignCellNeighbor(const StructureAnalysis& analysis, const AnalysisContext& context, int current,
+                                           int neighbor, int, int currentType, int neighborType, int& outNeighborSymmetry) const {
+        const Matrix3* rc = orientation(current);
+        const Matrix3* rn = orientation(neighbor);
+        if (!rc || !rn) return ClusterRuleDecision::Rejected;
+        Vector3 bond = context.simCell.wrapVector(context.positions->getPoint3(neighbor) - context.positions->getPoint3(current));
+        const double length = bond.length();
+        if (length <= EPSILON) return ClusterRuleDecision::Rejected;
+        bond /= length;
+        if (bondAlignment(analysis, currentType, *rc, bond) < kCellBondAlignment ||
+            bondAlignment(analysis, neighborType, *rn, -bond) < kCellBondAlignment)
+            return ClusterRuleDecision::Rejected;
+        Matrix3 relative;
+        if (!orthonormalizeMatrix(Matrix3(rn->transposed() * *rc), relative)) return ClusterRuleDecision::Rejected;
+        if (relative(0, 0) + relative(1, 1) + relative(2, 2) <= _minimumTrace) return ClusterRuleDecision::Rejected;
+        outNeighborSymmetry = 0;
+        return ClusterRuleDecision::Accepted;
+    }
+
+    // Gram-Schmidt with a proper handedness, as the shared orientation rule orthonormalizes transitions.
+    static bool orthonormalizeMatrix(const Matrix3& input, Matrix3& output) {
+        Vector3 first = input.column(0);
+        if (first.length() <= EPSILON) return false;
+        first /= first.length();
+        Vector3 second = input.column(1) - first * first.dot(input.column(1));
+        if (second.length() <= EPSILON) return false;
+        second /= second.length();
+        Vector3 third = first.cross(second);
+        output = Matrix3(first, second, third);
+        return true;
+    }
+
+    std::shared_ptr<const std::vector<OrientationClusterAtomState>> _orientations;
+    std::shared_ptr<const ClusterRuleProvider> _orientationRule;
+    std::vector<int> _orientationTypes;
+    std::vector<int> _cellTypes;
+    double _minimumTrace;
+};
+
 }
 
 std::optional<std::string> writeStructureContract(
@@ -137,8 +259,7 @@ std::optional<std::string> writeStructureContract(
             std::vector<unsigned char> aligned(topologies.size());
             for (std::size_t s = r.begin(); s < r.end(); ++s) {
                 const int atom = sites[s];
-                const int preferred = preferredTopology[atom];
-                if (preferred == kNotCrystalline) continue;
+                if (preferredTopology[atom] == kNotCrystalline) continue;
                 query.findNeighbors(s);
                 const auto& found = query.results();
                 const int count = std::min(static_cast<int>(found.size()), maxCn);
@@ -154,6 +275,16 @@ std::optional<std::string> writeStructureContract(
                 if (bestTopology < 0) {
                     ++tally.unaligned;
                     continue;
+                }
+                // A class that names a multi-site cell prefers whichever of its sites fits best.
+                int preferred = preferredTopology[atom];
+                if (preferred >= 0 && topologies[preferred].cellSite >= 0) {
+                    int bestSite = -1;
+                    for (std::size_t t = 0; t < topologies.size(); ++t)
+                        if (aligned[t] && topologies[t].cellSite >= 0 && topologies[t].name == topologies[preferred].name &&
+                            (bestSite < 0 || matches[t].rmsd < matches[bestSite].rmsd))
+                            bestSite = static_cast<int>(t);
+                    if (bestSite >= 0) preferred = bestSite;
                 }
                 bool overridden = false;
                 if (preferred >= 0 && preferred != bestTopology) {
@@ -212,11 +343,20 @@ std::optional<std::string> writeStructureContract(
     const std::int64_t overridden = static_cast<std::int64_t>(overrides.size()) - reverted;
     std::int64_t aligned = 0;
     std::string line;
+    // The sites of a multi-site cell share its name and are reported together.
     for (std::size_t t = 0; t < topologies.size(); ++t) {
         aligned += matched[t];
+        if (t > 0 && topologies[t].cellSite >= 0 && topologies[t - 1].cellSite >= 0 && topologies[t].name == topologies[t - 1].name)
+            continue;
+        std::int64_t count = 0;
+        for (std::size_t u = t; u < topologies.size(); ++u) {
+            if (u > t && !(topologies[u].cellSite >= 0 && topologies[u].name == topologies[t].name)) break;
+            count += matched[u];
+            if (topologies[t].cellSite < 0) break;
+        }
         char entry[96];
         std::snprintf(entry, sizeof(entry), "%s%s %lld (%.1f%%)", line.empty() ? "" : ", ", topologies[t].name.c_str(),
-            static_cast<long long>(matched[t]), percentOf(static_cast<std::uint64_t>(matched[t]), static_cast<std::size_t>(crystallineSites)));
+            static_cast<long long>(count), percentOf(static_cast<std::uint64_t>(count), static_cast<std::size_t>(crystallineSites)));
         line += entry;
     }
     spdlog::info("Aligned {} of {} crystalline sites in {}: {}", aligned, crystallineSites, timer.elapsed(), line);
@@ -267,14 +407,26 @@ std::optional<std::string> writeStructureContract(
     // Topologies whose overlap-grown bonds do not span space (sc, st, a7) join their atoms by the shared
     // orientation rule instead, as PTM does for SC.
     std::vector<int> orientationTypes;
+    std::vector<int> cellTypes;
     std::string orientationNames;
+    std::string cellNames;
     for (const LatticeTopology& topology : topologies) {
+        if (topology.cellSite >= 0) {
+            cellTypes.push_back(topology.structureType);
+            if (cellNames.find(topology.name) == std::string::npos) cellNames += (cellNames.empty() ? "" : ", ") + topology.name;
+            continue;
+        }
         if (!topology.orientationClusters) continue;
         orientationTypes.push_back(topology.structureType);
         orientationNames += (orientationNames.empty() ? "" : ", ") + topology.name;
     }
-    if (!orientationTypes.empty()) {
+    if (!orientationTypes.empty())
         spdlog::info("  Clusters of {} grow by orientation: too few of their bonds have two common neighbours", orientationNames);
+    if (!cellTypes.empty()) {
+        spdlog::info("  Clusters of {} grow by orientation across its {} sites (misorientation below {} degrees)",
+            cellNames, cellTypes.size(), kCellMisorientationDegrees);
+        analysis.setClusterRuleProvider(std::make_shared<ContractRuleProvider>(orientations, std::move(orientationTypes), std::move(cellTypes)));
+    } else if (!orientationTypes.empty()) {
         analysis.setClusterRuleProvider(std::make_shared<OrientationRuleFor>(orientations, std::move(orientationTypes)));
     }
     ClusterBuilder clusterBuilder(analysis, context);
@@ -321,6 +473,7 @@ std::optional<std::string> writeStructureContract(
             {"count", matched[t]},
             {"fraction", crystallineSites ? static_cast<double>(matched[t]) / static_cast<double>(crystallineSites) : 0.0},
         });
+        if (topologies[t].cellSite >= 0) rows.back()["cell_site"] = topologies[t].cellSite;
     }
     result["sub_listings"]["lattice_alignment"] = std::move(rows);
     return std::nullopt;

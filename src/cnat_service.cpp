@@ -318,22 +318,56 @@ json CnatService::compute(const LammpsParser::Frame& frame, const std::string& o
             if (!_latticeDir.empty()) setCrystalTopologySearchRoot(_latticeDir);
             requested = automatic ? modelTopologies(names) : splitList(_topologies);
             topologies = loadLatticeTopologies(requested);
-            if (requested.empty())
+            if (requested.empty() && _cell.empty())
                 spdlog::info("No class of the model names a lattice topology; pass --topologies to write the structure contract");
         } catch (const std::exception& e) {
             if (!automatic)
                 return AnalysisResult::failure(std::string("Cannot load the lattice topologies: ") + e.what());
             spdlog::warn("Cannot load the lattice topologies ({}); the structure contract is not written", e.what());
         }
+        if (!_cell.empty()) {
+            const auto cellTypes = parseTypes(_cellTypes);
+            if (!cellTypes)
+                return AnalysisResult::failure("--cell_types must be a comma-separated list of atom types, got '" + _cellTypes + "'");
+            try {
+                CellTopologies cell = loadCellTopologies(_cell, *cellTypes, _cellCutoff,
+                    kCustomTopologyTypeBase + static_cast<int>(topologies.size()));
+                int least = MAX_NEIGHBORS, most = 0;
+                for (const LatticeTopology& site : cell.sites) {
+                    least = std::min(least, site.coordinationNumber);
+                    most = std::max(most, site.coordinationNumber);
+                }
+                spdlog::info("Reference cell {}: {} sites of type {}, neighbours within {:.3f} A ({} to {} per site); "
+                             "closest pair of sites {:.3f} apart in RMSD", cell.name, cell.sites.size(),
+                             _cellTypes.empty() ? std::string("any") : _cellTypes, cell.cutoff, least, most, cell.pseudoSymmetryRmsd);
+                if (cell.pseudoSymmetryRmsd < _rmsd)
+                    spdlog::warn("Two sites of {} align onto each other within --rmsd {}: atoms may take either and split clusters",
+                                 cell.name, _rmsd);
+                result["main_listing"]["cell"] = cell.name;
+                result["main_listing"]["cell_cutoff"] = cell.cutoff;
+                for (LatticeTopology& site : cell.sites) topologies.push_back(std::move(site));
+            } catch (const std::exception& e) {
+                return AnalysisResult::failure(std::string("Cannot load the reference cell: ") + e.what());
+            }
+        }
         if (!topologies.empty()) {
+            const auto contractTypes = parseTypes(_contractTypes);
+            if (!contractTypes)
+                return AnalysisResult::failure("--contract_types must be a comma-separated list of atom types, got '" + _contractTypes + "'");
+            // The contract sublattice defaults to the model's neighbour sublattice.
+            const std::vector<int>& siteTypes = contractTypes->empty() ? *types : *contractTypes;
             std::vector<int> sites;
             for (int i = 0; i < frame.natoms; ++i)
-                if (types->empty() || std::ranges::find(*types, frame.types[i]) != types->end()) sites.push_back(i);
+                if (siteTypes.empty() || std::ranges::find(siteTypes, frame.types[i]) != siteTypes.end()) sites.push_back(i);
             std::vector<int> classTopology(names.size(), kAnyTopology);
             classTopology[0] = kNotCrystalline;
             for (std::size_t c = 1; c < names.size(); ++c)
                 for (std::size_t t = 0; t < topologies.size(); ++t)
-                    if (lowercase(names[c]) == lowercase(topologies[t].name)) classTopology[c] = static_cast<int>(t);
+                    if (classTopology[c] < 0 && lowercase(names[c]) == lowercase(topologies[t].name)) classTopology[c] = static_cast<int>(t);
+            // With a cell, the classes it is not (andalusite next to kyanite) are no lattice sites of it.
+            if (!_cell.empty())
+                for (std::size_t c = 1; c < names.size(); ++c)
+                    if (classTopology[c] == kAnyTopology) classTopology[c] = kNotCrystalline;
             std::vector<int> preferred(natoms);
             for (std::size_t i = 0; i < natoms; ++i) preferred[i] = classTopology[atomLabels[i]];
             if (auto error = writeStructureContract(frame, outputBase, sites, preferred, topologies, _rmsd, result, contractAtoms))

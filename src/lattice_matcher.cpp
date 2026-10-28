@@ -6,8 +6,12 @@
 #include <cctype>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
+#include <tuple>
 
 namespace Volt {
 
@@ -81,6 +85,95 @@ bool rotationFactor(Matrix3 m, Matrix3& rotation) {
     return true;
 }
 
+// Unit shell and anchor pair of a topology whose shell is set.
+void prepareMatching(LatticeTopology& topology, const std::vector<Vector3>& shell) {
+    const int cn = topology.coordinationNumber;
+    double meanLength = 0.0;
+    for (int k = 0; k < cn; ++k) meanLength += shell[k].length();
+    meanLength /= cn;
+    for (int k = 0; k < cn; ++k) topology.unitVectors.push_back(shell[k] / meanLength);
+
+    // The shortest vectors move least under thermal motion; of them, the pair closest to
+    // perpendicular gives the best-conditioned frame. Other vectors join only when the shortest
+    // are all collinear.
+    const auto& u = topology.unitVectors;
+    double shortest = std::numeric_limits<double>::max();
+    for (const Vector3& vector : u) shortest = std::min(shortest, vector.length());
+    auto isShortest = [&](int k) { return u[k].length() <= shortest * (1.0 + 1e-6); };
+    topology.anchorA = 0;
+    while (!isShortest(topology.anchorA)) ++topology.anchorA;
+    const Vector3& a = u[topology.anchorA];
+    for (const bool shortestOnly : {true, false}) {
+        double bestCosine = 1.0 - 1e-6;
+        topology.anchorB = -1;
+        for (int k = 0; k < cn; ++k) {
+            if (k == topology.anchorA || (shortestOnly && !isShortest(k))) continue;
+            const double cosine = std::abs(a.dot(u[k])) / (a.length() * u[k].length());
+            if (cosine < bestCosine) {
+                bestCosine = cosine;
+                topology.anchorB = k;
+            }
+        }
+        if (topology.anchorB >= 0) break;
+    }
+    Matrix3 frame;
+    if (topology.anchorB < 0 || !anchorFrame(a, u[topology.anchorB], frame))
+        throw std::runtime_error("lattice topology '" + topology.name + "' has no two non-collinear neighbour vectors");
+    topology.anchorFrameTransposed = frame.transposed();
+}
+
+struct CellAtoms {
+    Matrix3 cell = Matrix3(Matrix3::Zero{});
+    Point3 origin = Point3::Origin();
+    std::vector<int> types;
+    std::vector<Point3> positions;
+};
+
+// LAMMPS data file, orthogonal or triclinic, 'atomic' (id type x y z) or 'charge' (id type q x y z) style.
+CellAtoms readLammpsData(const std::string& path) {
+    std::ifstream in(path);
+    if (!in) throw std::runtime_error("cannot open the reference cell " + path);
+    CellAtoms data;
+    std::array<double, 3> lo{}, hi{}, tilt{};
+    std::size_t natoms = 0;
+    std::string line;
+    bool charge = false;
+    while (std::getline(in, line)) {
+        std::istringstream words(line);
+        std::vector<std::string> tok;
+        for (std::string w; words >> w;) tok.push_back(w);
+        if (tok.size() >= 2 && tok[1] == "atoms") natoms = std::stoul(tok[0]);
+        for (int d = 0; d < 3; ++d)
+            if (tok.size() >= 4 && tok[2] == std::string(1, "xyz"[d]) + "lo") {
+                lo[d] = std::stod(tok[0]);
+                hi[d] = std::stod(tok[1]);
+            }
+        if (tok.size() >= 6 && tok[3] == "xy" && tok[4] == "xz" && tok[5] == "yz")
+            for (int d = 0; d < 3; ++d) tilt[d] = std::stod(tok[d]);
+        if (!tok.empty() && tok[0] == "Atoms") {
+            charge = line.find("charge") != std::string::npos;
+            break;
+        }
+    }
+    if (natoms == 0) throw std::runtime_error("the reference cell " + path + " has no atoms or no Atoms section");
+    data.cell = Matrix3(Vector3(hi[0] - lo[0], 0, 0), Vector3(tilt[0], hi[1] - lo[1], 0), Vector3(tilt[1], tilt[2], hi[2] - lo[2]));
+    data.origin = Point3(lo[0], lo[1], lo[2]);
+    while (data.positions.size() < natoms && std::getline(in, line)) {
+        std::istringstream words(line);
+        std::vector<double> v;
+        for (double x; words >> x;) v.push_back(x);
+        if (v.size() < 5) continue;
+        // Without a style comment, 6 or 9 columns (with image flags) mean a charge column.
+        const bool hasCharge = charge || v.size() == 6 || v.size() == 9;
+        const std::size_t x = hasCharge ? 3 : 2;
+        if (v.size() < x + 3) throw std::runtime_error("short atom line in " + path + ": " + line);
+        data.types.push_back(static_cast<int>(v[1]));
+        data.positions.emplace_back(v[x], v[x + 1], v[x + 2]);
+    }
+    if (data.positions.size() != natoms) throw std::runtime_error("the reference cell " + path + " lists fewer atoms than it declares");
+    return data;
+}
+
 }
 
 int structureTypeOfName(const std::string& name) {
@@ -146,42 +239,120 @@ std::vector<LatticeTopology> loadLatticeTopologies(const std::vector<std::string
             if (std::all_of(permutation.begin(), permutation.begin() + cn, [&](int k) { return k >= 0 && k < cn; }))
                 topology.shellSymmetries.push_back(static_cast<int>(g));
         }
-
-        double meanLength = 0.0;
-        for (int k = 0; k < cn; ++k) meanLength += shell[k].length();
-        meanLength /= cn;
-        for (int k = 0; k < cn; ++k) topology.unitVectors.push_back(shell[k] / meanLength);
-
-        // The shortest vectors move least under thermal motion; of them, the pair closest to
-        // perpendicular gives the best-conditioned frame. Other vectors join only when the shortest
-        // are all collinear.
-        const auto& u = topology.unitVectors;
-        double shortest = std::numeric_limits<double>::max();
-        for (const Vector3& vector : u) shortest = std::min(shortest, vector.length());
-        auto isShortest = [&](int k) { return u[k].length() <= shortest * (1.0 + 1e-6); };
-        topology.anchorA = 0;
-        while (!isShortest(topology.anchorA)) ++topology.anchorA;
-        const Vector3& a = u[topology.anchorA];
-        for (const bool shortestOnly : {true, false}) {
-            double bestCosine = 1.0 - 1e-6;
-            topology.anchorB = -1;
-            for (int k = 0; k < cn; ++k) {
-                if (k == topology.anchorA || (shortestOnly && !isShortest(k))) continue;
-                const double cosine = std::abs(a.dot(u[k])) / (a.length() * u[k].length());
-                if (cosine < bestCosine) {
-                    bestCosine = cosine;
-                    topology.anchorB = k;
-                }
-            }
-            if (topology.anchorB >= 0) break;
-        }
-        Matrix3 frame;
-        if (topology.anchorB < 0 || !anchorFrame(a, u[topology.anchorB], frame))
-            throw std::runtime_error("lattice topology '" + topology.name + "' has no two non-collinear neighbour vectors");
-        topology.anchorFrameTransposed = frame.transposed();
+        prepareMatching(topology, shell);
         topologies.push_back(std::move(topology));
     }
     return topologies;
+}
+
+CellTopologies loadCellTopologies(const std::string& path, const std::vector<int>& types, double cutoff,
+                                  int firstStructureType) {
+    // A site with fewer neighbours gives circuits too few bonds to close; MAX_NEIGHBORS is the contract's.
+    constexpr int kMinimumSiteNeighbors = 12;
+    const CellAtoms data = readLammpsData(path);
+    std::vector<Vector3> frac;
+    const Matrix3 inverse = data.cell.inverse();
+    for (std::size_t i = 0; i < data.positions.size(); ++i)
+        if (types.empty() || std::ranges::find(types, data.types[i]) != types.end())
+            frac.push_back(inverse * (data.positions[i] - data.origin));
+    if (frac.empty()) throw std::runtime_error("the reference cell " + path + " has no atoms of the requested types");
+
+    // Neighbours of each site out to a radius that holds more than MAX_NEIGHBORS of them.
+    const double volume = std::abs(data.cell.determinant());
+    std::array<int, 3> images{};
+    std::vector<std::vector<Vector3>> neighbors(frac.size());
+    for (double radius = 6.0;; radius *= 1.5) {
+        for (int d = 0; d < 3; ++d) {
+            const double width = volume / data.cell.column((d + 1) % 3).cross(data.cell.column((d + 2) % 3)).length();
+            images[d] = static_cast<int>(std::ceil(radius / width)) + 1;
+        }
+        bool enough = true;
+        for (std::size_t s = 0; s < frac.size(); ++s) {
+            neighbors[s].clear();
+            for (std::size_t t = 0; t < frac.size(); ++t)
+                for (int i = -images[0]; i <= images[0]; ++i)
+                    for (int j = -images[1]; j <= images[1]; ++j)
+                        for (int k = -images[2]; k <= images[2]; ++k) {
+                            const Vector3 delta = data.cell * (frac[t] - frac[s] + Vector3(i, j, k));
+                            const double length = delta.length();
+                            if (length > 1e-6 && length < radius) neighbors[s].push_back(delta);
+                        }
+            std::ranges::sort(neighbors[s], [](const Vector3& a, const Vector3& b) {
+                const double la = a.squaredLength(), lb = b.squaredLength();
+                if (std::abs(la - lb) > 1e-9) return la < lb;
+                return std::tie(a[0], a[1], a[2]) < std::tie(b[0], b[1], b[2]);
+            });
+            enough = enough && neighbors[s].size() > static_cast<std::size_t>(MAX_NEIGHBORS);
+        }
+        if (enough) break;
+    }
+
+    CellTopologies cell;
+    cell.name = std::filesystem::path(path).stem().string();
+    for (auto& ch : cell.name) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    auto neighborCount = [&](std::size_t s, double radius) {
+        return static_cast<int>(std::ranges::count_if(neighbors[s], [&](const Vector3& v) { return v.length() < radius; }));
+    };
+    if (cutoff > 0.0) {
+        cell.cutoff = cutoff;
+    } else {
+        // The widest gap in the pooled neighbour distances that leaves every site 12 to MAX_NEIGHBORS neighbours.
+        std::vector<double> distances;
+        for (const auto& list : neighbors)
+            for (std::size_t n = 0; n <= static_cast<std::size_t>(MAX_NEIGHBORS) && n < list.size(); ++n)
+                distances.push_back(list[n].length());
+        std::ranges::sort(distances);
+        double widest = 0.0;
+        for (std::size_t i = 0; i + 1 < distances.size(); ++i) {
+            const double gap = distances[i + 1] - distances[i];
+            if (gap <= widest) continue;
+            const double candidate = 0.5 * (distances[i] + distances[i + 1]);
+            bool valid = true;
+            for (std::size_t s = 0; s < neighbors.size() && valid; ++s) {
+                const int cn = neighborCount(s, candidate);
+                valid = cn >= kMinimumSiteNeighbors && cn <= MAX_NEIGHBORS;
+            }
+            if (!valid) continue;
+            widest = gap;
+            cell.cutoff = candidate;
+        }
+        if (cell.cutoff <= 0.0)
+            throw std::runtime_error("no neighbour cutoff of the reference cell " + path + " gives every site " +
+                                     std::to_string(kMinimumSiteNeighbors) + " to " + std::to_string(MAX_NEIGHBORS) +
+                                     " neighbours; pass --cell_cutoff");
+    }
+
+    for (std::size_t s = 0; s < neighbors.size(); ++s) {
+        const int cn = neighborCount(s, cell.cutoff);
+        if (cn < 3 || cn > MAX_NEIGHBORS)
+            throw std::runtime_error("site " + std::to_string(s) + " of the reference cell has " + std::to_string(cn) +
+                                     " neighbours within " + std::to_string(cell.cutoff) + " A; the contract holds 3 to " +
+                                     std::to_string(MAX_NEIGHBORS));
+        LatticeTopology topology;
+        topology.name = cell.name;
+        topology.structureType = firstStructureType + static_cast<int>(s);
+        topology.coordinationNumber = cn;
+        topology.cellSite = static_cast<int>(s);
+        topology.latticeVectors.assign(neighbors[s].begin(), neighbors[s].begin() + cn);
+        for (auto& pair : topology.commonNeighbors) pair = {-1, -1};
+        SharedCrystalSymmetryPermutation identity;
+        for (int k = 0; k < MAX_NEIGHBORS; ++k) identity.permutation[k] = k;
+        identity.inverseProduct = {0};
+        topology.symmetries = {identity};
+        topology.shellSymmetries = {0};
+        prepareMatching(topology, topology.latticeVectors);
+        cell.sites.push_back(std::move(topology));
+    }
+
+    cell.pseudoSymmetryRmsd = std::numeric_limits<double>::infinity();
+    for (const LatticeTopology& from : cell.sites)
+        for (const LatticeTopology& onto : cell.sites) {
+            if (&from == &onto || from.coordinationNumber != onto.coordinationNumber) continue;
+            LatticeMatch match;
+            if (matchLattice(onto, from.latticeVectors.data(), match))
+                cell.pseudoSymmetryRmsd = std::min(cell.pseudoSymmetryRmsd, match.rmsd);
+        }
+    return cell;
 }
 
 bool matchLattice(const LatticeTopology& topology, const Vector3* deltas, LatticeMatch& match) {

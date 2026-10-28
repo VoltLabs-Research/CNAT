@@ -37,6 +37,9 @@ struct LatticeTopology {
     int anchorA = 0;
     int anchorB = 1;
     Matrix3 anchorFrameTransposed = Matrix3(Matrix3::Identity{});
+    // Site of a multi-site reference cell (loadCellTopologies), else -1. The sites of one cell share a
+    // name and the crystal frame; atoms of different sites of one grain grow into one cluster.
+    int cellSite = -1;
 };
 
 struct LatticeMatch {
@@ -51,6 +54,24 @@ struct LatticeMatch {
 // Resolves the names in the lattice registry. Names StructureType has (fcc, hcp, bcc, sc,
 // cubic_diamond, hex_diamond) keep its structure type, so their atoms read as the other producers'.
 std::vector<LatticeTopology> loadLatticeTopologies(const std::vector<std::string>& names);
+
+// Multi-site reference crystals, whose sites differ in environment (kyanite's Al: four orbits and their
+// inversion images), cannot be one registry topology. Every site of the cell of these atom types becomes
+// a topology of its own, named after the cell, whose shell is its neighbours of those types within the
+// cutoff, in the frame of the cell. The cutoff is the given one or, for 0, the midpoint of the widest
+// gap between neighbour distances of the cell that leaves every site 12 to MAX_NEIGHBORS neighbours.
+// Only the identity is a symmetry: the setting is fixed by which site an atom matches, so the cell must
+// have no proper rotation that carries the sublattice onto itself (P1 and P-1 cells; warns otherwise).
+struct CellTopologies {
+    std::string name;
+    double cutoff = 0.0;
+    std::vector<LatticeTopology> sites;
+    // Smallest RMSD of one site's shell aligned onto another site's with as many neighbours: below the
+    // alignment cutoff, an atom could take the wrong site and so the wrong setting.
+    double pseudoSymmetryRmsd = 0.0;
+};
+CellTopologies loadCellTopologies(const std::string& path, const std::vector<int>& types, double cutoff,
+                                  int firstStructureType);
 
 // Aligns the first coordinationNumber deltas, nearest first, onto the topology: of the proper
 // rotations that carry the anchor pair onto a pair of neighbours, the one whose one-to-one assignment
