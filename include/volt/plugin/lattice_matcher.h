@@ -40,6 +40,12 @@ struct LatticeTopology {
     // Site of a multi-site reference cell (loadCellTopologies), else -1. The sites of one cell share a
     // name and the crystal frame; atoms of different sites of one grain grow into one cluster.
     int cellSite = -1;
+    // Atom type of the cell site, and of each of its neighbours: only atoms of the type take the site,
+    // and each vector takes a neighbour of its type (cells of several species).
+    int siteType = -1;
+    std::vector<int> neighborTypes;
+    // Cell site of each neighbour: a grain passes its sites on bond by bond (structure_contract.cpp).
+    std::vector<int> neighborSites;
 };
 
 struct LatticeMatch {
@@ -60,16 +66,29 @@ std::vector<LatticeTopology> loadLatticeTopologies(const std::vector<std::string
 // a topology of its own, named after the cell, whose shell is its neighbours of those types within the
 // cutoff, in the frame of the cell. The cutoff is the given one or, for 0, the midpoint of the widest
 // gap between neighbour distances of the cell that leaves every site 12 to MAX_NEIGHBORS neighbours.
-// Only the identity is a symmetry: the setting is fixed by which site an atom matches, so the cell must
-// have no proper rotation that carries the sublattice onto itself (P1 and P-1 cells; warns otherwise).
+// Only the identity is a symmetry of a site: the setting is fixed by which site an atom matches, and
+// sites that a rotation or translation of the space group or a pseudo-symmetry relates fit alike, so the
+// contract grows each grain from its best-aligned atom, passing its orientation and sites on bond by
+// bond (structure_contract.cpp).
 struct CellTopologies {
     std::string name;
     double cutoff = 0.0;
     std::vector<LatticeTopology> sites;
-    // Smallest RMSD of one site's shell aligned onto another site's with as many neighbours: below the
-    // alignment cutoff, an atom could take the wrong site and so the wrong setting.
-    double pseudoSymmetryRmsd = 0.0;
 };
+// A reference cell: edge vectors (columns), origin and atoms, from a LAMMPS data file (orthogonal or
+// triclinic, 'atomic' or 'charge' style) or from a model, which stores the crystal of each of its
+// crystal classes.
+struct CellAtoms {
+    Matrix3 cell = Matrix3(Matrix3::Zero{});
+    Point3 origin = Point3::Origin();
+    std::vector<int> types;
+    std::vector<Point3> positions;
+};
+CellAtoms readLammpsData(const std::string& path);
+// The sites of the atoms of these types (every atom for none) as topologies named name.
+CellTopologies cellTopologies(const CellAtoms& data, std::string name, const std::vector<int>& types, double cutoff,
+                              int firstStructureType);
+// The same for a LAMMPS data file, named after its stem.
 CellTopologies loadCellTopologies(const std::string& path, const std::vector<int>& types, double cutoff,
                                   int firstStructureType);
 
@@ -77,7 +96,16 @@ CellTopologies loadCellTopologies(const std::string& path, const std::vector<int
 // rotations that carry the anchor pair onto a pair of neighbours, the one whose one-to-one assignment
 // leaves the smallest residual, then refined by a least-squares rotation and scale. False when no
 // rotation gives a one-to-one assignment.
-bool matchLattice(const LatticeTopology& topology, const Vector3* deltas, LatticeMatch& match);
+// For a topology with neighbour types, deltaTypes gives the type of each of deltaCount deltas, nearest
+// first and at least coordinationNumber of them: each vector takes the nearest of its type, so a shell
+// that thermal motion reorders against the next one still aligns.
+inline constexpr int kMaxMatchCandidates = 32;
+bool matchLattice(const LatticeTopology& topology, const Vector3* deltas, LatticeMatch& match,
+                  const int* deltaTypes = nullptr, int deltaCount = 0);
+// The same from a given orientation instead of an anchor search: the assignment under the guess, then
+// the refinement. Grows a grain from atoms whose orientation is known.
+bool matchLatticeFrom(const LatticeTopology& topology, const Vector3* deltas, const Matrix3& guess, LatticeMatch& match,
+                      const int* deltaTypes = nullptr, int deltaCount = 0);
 
 // Crystal information of the topologies for the shared cluster builder and the contract export.
 class LatticeCrystalInfo final : public StructureAnalysisCrystalInfo {

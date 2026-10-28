@@ -12,9 +12,13 @@
 #include <tbb/parallel_for.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <deque>
 #include <limits>
+#include <map>
+#include <tuple>
 
 namespace Volt {
 
@@ -23,6 +27,8 @@ using namespace Volt::Particles;
 namespace {
 
 constexpr int kNeighborQueryCapacity = 32;
+// Candidates past the largest shell for the sites of a cell of several species (matchLattice).
+constexpr int kExtraCandidates = 8;
 // Another topology replaces the preferred one only when its RMSD is below this fraction of the
 // preferred one's: thermal noise raises every topology's RMSD alike and cannot flip a hot FCC atom to
 // HCP, while a stacking-fault atom (hcp ~0, fcc > 0.25) still becomes hcp.
@@ -200,6 +206,153 @@ private:
     double _minimumTrace;
 };
 
+// The sites of a multi-site cell that a rotation or translation of its space group relates (the four Si
+// of Pbnm are one Wyckoff site) or that a pseudo-symmetry relates (forsterite's oxygens are nearly
+// hexagonal close packed, and some of its sites nearly repeat at half a lattice vector) fit an atom
+// alike, so an atom's own best fit can leave it in a setting or on a site its grain does not have, and
+// circuits through it would not close on a lattice vector. Each grain therefore grows from its
+// best-aligned atom, the seeds taken in order of RMSD, as a registration does: a neighbour is the site
+// the bond to it lands on in the cell, and takes the orientation of the atom it is reached from, if its
+// refined fit there stays within the cluster misorientation and the RMSD cutoff, and if the fit agrees
+// with every neighbour already in the grain on which site each is (the bonds read the same both ways;
+// where a pseudo-translation would shift the sites, they do not). A neighbour that fits
+// under no grain is reached from elsewhere or, if it aligned on its own, seeds a grain of its own, so
+// neither a setting nor a site is forced across a grain boundary or a dislocation core.
+// Returns the atoms grown into a site or setting other than their own fit, the grains and the fits
+// turned down as inconsistent with the grain.
+std::tuple<std::int64_t, std::int64_t, std::int64_t> growCellGrains(
+    const LammpsParser::Frame& frame, const std::vector<int>& sites, const std::vector<int>& siteIndex,
+    const NearestNeighborFinder& finder, int candidates, const std::vector<LatticeTopology>& topologies,
+    const std::vector<int>& preferredTopology, double rmsdCutoff, StructureContractAtoms& atoms,
+    std::vector<OrientationClusterAtomState>& orientations, std::vector<std::array<int, MAX_NEIGHBORS>>& siteNeighbors,
+    std::vector<std::int64_t>& matched) {
+    const double minimumTrace = 1.0 + 2.0 * std::cos(kCellMisorientationDegrees * PI / 180.0);
+    std::map<std::pair<std::string, int>, int> topologyOfSite;
+    for (std::size_t t = 0; t < topologies.size(); ++t)
+        if (topologies[t].cellSite >= 0) topologyOfSite[{topologies[t].name, topologies[t].cellSite}] = static_cast<int>(t);
+    auto cellOf = [&](int atom) -> const std::string* {
+        const int preferred = preferredTopology[atom];
+        return preferred >= 0 && topologies[preferred].cellSite >= 0 ? &topologies[preferred].name : nullptr;
+    };
+    std::vector<int> seeds;
+    for (const int atom : sites)
+        if (cellOf(atom) && atoms.topology[atom] >= 0 && topologies[atoms.topology[atom]].cellSite >= 0) seeds.push_back(atom);
+    std::ranges::sort(seeds, [&](int a, int b) { return atoms.rmsd[a] < atoms.rmsd[b]; });
+
+    NearestNeighborFinder::Query<kNeighborQueryCapacity> query(finder);
+    std::array<Vector3, kMaxMatchCandidates> deltas;
+    std::array<int, kMaxMatchCandidates> deltaTypes;
+    std::vector<unsigned char> grown(static_cast<std::size_t>(frame.natoms), 0);
+    std::vector<std::int64_t> grainOf(static_cast<std::size_t>(frame.natoms), 0);
+    std::int64_t inconsistent = 0;
+    std::deque<int> queue;
+    std::int64_t regrown = 0;
+    std::int64_t grains = 0;
+    for (const int seed : seeds) {
+        if (grown[seed]) continue;
+        ++grains;
+        grown[seed] = 1;
+        grainOf[seed] = grains;
+        queue.push_back(seed);
+        while (!queue.empty()) {
+            const int atom = queue.front();
+            queue.pop_front();
+            const LatticeTopology& own = topologies[atoms.topology[atom]];
+            const Matrix3 guess = orientations[atom].orientation;
+            for (int k = 0; k < own.coordinationNumber; ++k) {
+                const int neighbor = siteNeighbors[siteIndex[atom]][k];
+                const std::string* cell = cellOf(neighbor);
+                if (grown[neighbor] || !cell || *cell != own.name) continue;
+                query.findNeighbors(static_cast<std::size_t>(siteIndex[neighbor]));
+                const auto& found = query.results();
+                const int count = std::min(static_cast<int>(found.size()), candidates);
+                for (int j = 0; j < count; ++j) {
+                    deltas[j] = found[j].delta;
+                    deltaTypes[j] = frame.types[sites[found[j].index]];
+                }
+                const auto target = topologyOfSite.find({own.name, own.neighborSites[k]});
+                if (target == topologyOfSite.end()) continue;
+                const int best = target->second;
+                const LatticeTopology& site = topologies[best];
+                LatticeMatch bestMatch;
+                if (site.siteType != frame.types[neighbor] || site.coordinationNumber > count ||
+                    !matchLatticeFrom(site, deltas.data(), guess, bestMatch, deltaTypes.data(), count) || bestMatch.rmsd > rmsdCutoff)
+                    continue;
+                const Matrix3 relative = guess.transposed() * bestMatch.rotation;
+                if (relative(0, 0) + relative(1, 1) + relative(2, 2) <= minimumTrace) continue;
+                bool consistent = true;
+                for (int j = 0; j < site.coordinationNumber && consistent; ++j) {
+                    const int other = sites[found[bestMatch.slots[j]].index];
+                    if (grainOf[other] != grains) continue;
+                    const LatticeTopology& otherSite = topologies[atoms.topology[other]];
+                    consistent = otherSite.cellSite == site.neighborSites[j];
+                    const auto& otherShell = siteNeighbors[siteIndex[other]];
+                    for (int m = 0; m < otherSite.coordinationNumber && consistent; ++m)
+                        if (otherShell[m] == neighbor)
+                            consistent = (otherSite.latticeVectors[m] + site.latticeVectors[j]).length() < 1e-3;
+                }
+                if (!consistent) {
+                    ++inconsistent;
+                    continue;
+                }
+                const int previous = atoms.topology[neighbor];
+                if (previous != best || !orientations[neighbor].valid ||
+                    !Matrix3(orientations[neighbor].orientation.transposed() * bestMatch.rotation).equals(Matrix3(Matrix3::Identity{}), 0.05))
+                    ++regrown;
+                if (previous >= 0) --matched[previous];
+                ++matched[best];
+                atoms.topology[neighbor] = best;
+                atoms.rmsd[neighbor] = static_cast<float>(bestMatch.rmsd);
+                orientations[neighbor].orientation = bestMatch.rotation;
+                orientations[neighbor].valid = true;
+                for (int j = 0; j < topologies[best].coordinationNumber; ++j)
+                    siteNeighbors[siteIndex[neighbor]][j] = sites[found[bestMatch.slots[j]].index];
+                grown[neighbor] = 1;
+                grainOf[neighbor] = grains;
+                queue.push_back(neighbor);
+            }
+        }
+    }
+    // Growth crosses any boundary within the cluster misorientation, so two grains of one cell that meet
+    // within it are one crystal whose registrations disagree (a pseudo-translation apart, or a seed's own
+    // ambiguous fit): circuits through both would not close on a lattice vector. The smaller one is no
+    // lattice site, nor is a seed no neighbour joined. Grains are dropped smallest first.
+    std::vector<std::int64_t> grainSize(static_cast<std::size_t>(grains) + 1, 0);
+    for (const int atom : sites) grainSize[static_cast<std::size_t>(grainOf[atom])]++;
+    std::vector<std::vector<int>> members(static_cast<std::size_t>(grains) + 1);
+    for (const int atom : sites)
+        if (grainOf[atom] > 0) members[static_cast<std::size_t>(grainOf[atom])].push_back(atom);
+    std::vector<std::int64_t> order;
+    for (std::int64_t g = 1; g <= grains; ++g) order.push_back(g);
+    std::ranges::sort(order, [&](std::int64_t a, std::int64_t b) { return grainSize[a] < grainSize[b]; });
+    std::vector<unsigned char> dropped(static_cast<std::size_t>(grains) + 1, 0);
+    std::int64_t droppedGrains = 0;
+    for (const std::int64_t g : order) {
+        bool conflict = grainSize[g] == 1;
+        for (std::size_t i = 0; i < members[g].size() && !conflict; ++i) {
+            const int atom = members[g][i];
+            const LatticeTopology& own = topologies[atoms.topology[atom]];
+            for (int k = 0; k < own.coordinationNumber && !conflict; ++k) {
+                const int other = siteNeighbors[siteIndex[atom]][k];
+                const std::int64_t h = grainOf[other];
+                if (h == 0 || h == g || dropped[h] || grainSize[h] < grainSize[g]) continue;
+                const Matrix3 relative = orientations[atom].orientation.transposed() * orientations[other].orientation;
+                conflict = relative(0, 0) + relative(1, 1) + relative(2, 2) > minimumTrace;
+            }
+        }
+        if (!conflict) continue;
+        dropped[g] = 1;
+        ++droppedGrains;
+        for (const int atom : members[g]) {
+            --matched[atoms.topology[atom]];
+            atoms.topology[atom] = -1;
+            orientations[atom].valid = false;
+            grainOf[atom] = 0;
+        }
+    }
+    return {regrown, grains - droppedGrains, inconsistent};
+}
+
 }
 
 std::optional<std::string> writeStructureContract(
@@ -231,7 +384,10 @@ std::optional<std::string> writeStructureContract(
     auto sitePositions = std::make_shared<ParticleProperty>(sites.size(), ParticleProperty::PositionProperty, 0, true);
     Point3* sitePoints = sitePositions->dataPoint3();
     for (std::size_t s = 0; s < sites.size(); ++s) sitePoints[s] = context.positions->getPoint3(sites[s]);
-    NearestNeighborFinder finder(maxCn);
+    // Sites of a cell of several species align onto the nearest of each type among more candidates.
+    const bool typedSites = std::ranges::any_of(topologies, [](const LatticeTopology& t) { return !t.neighborTypes.empty(); });
+    const int candidates = typedSites ? std::min(kMaxMatchCandidates, maxCn + kExtraCandidates) : maxCn;
+    NearestNeighborFinder finder(candidates);
     if (!finder.prepare(sitePositions.get(), frame.simulationCell))
         return std::string("NearestNeighborFinder::prepare failed on the lattice sites");
 
@@ -254,7 +410,8 @@ std::optional<std::string> writeStructureContract(
         [&](const tbb::blocked_range<std::size_t>& r) {
             AlignmentTally& tally = tallies.local();
             NearestNeighborFinder::Query<kNeighborQueryCapacity> query(finder);
-            std::array<Vector3, MAX_NEIGHBORS> deltas;
+            std::array<Vector3, kMaxMatchCandidates> deltas;
+            std::array<int, kMaxMatchCandidates> deltaTypes;
             std::vector<LatticeMatch> matches(topologies.size());
             std::vector<unsigned char> aligned(topologies.size());
             for (std::size_t s = r.begin(); s < r.end(); ++s) {
@@ -262,13 +419,17 @@ std::optional<std::string> writeStructureContract(
                 if (preferredTopology[atom] == kNotCrystalline) continue;
                 query.findNeighbors(s);
                 const auto& found = query.results();
-                const int count = std::min(static_cast<int>(found.size()), maxCn);
-                for (int j = 0; j < count; ++j) deltas[j] = found[j].delta;
+                const int count = std::min(static_cast<int>(found.size()), candidates);
+                for (int j = 0; j < count; ++j) {
+                    deltas[j] = found[j].delta;
+                    deltaTypes[j] = frame.types[sites[found[j].index]];
+                }
 
                 int bestTopology = -1;
                 for (std::size_t t = 0; t < topologies.size(); ++t) {
                     aligned[t] = topologies[t].coordinationNumber <= count &&
-                                 matchLattice(topologies[t], deltas.data(), matches[t]);
+                                 (topologies[t].siteType < 0 || topologies[t].siteType == frame.types[atom]) &&
+                                 matchLattice(topologies[t], deltas.data(), matches[t], deltaTypes.data(), count);
                     if (aligned[t] && (bestTopology < 0 || matches[t].rmsd < matches[bestTopology].rmsd))
                         bestTopology = static_cast<int>(t);
                 }
@@ -340,6 +501,17 @@ std::optional<std::string> writeStructureContract(
         atoms.topology[atom] = -1;
         (*orientations)[atom].valid = false;
     }
+    std::vector<int> siteIndex(natoms, -1);
+    for (std::size_t s = 0; s < sites.size(); ++s) siteIndex[sites[s]] = static_cast<int>(s);
+    std::int64_t regrown = 0;
+    std::int64_t grains = 0;
+    std::int64_t inconsistent = 0;
+    const double alignSeconds = std::chrono::duration<double>(timer.elapsedTime()).count();
+    Stopwatch growTimer;
+    if (std::ranges::any_of(topologies, [](const LatticeTopology& t) { return t.cellSite >= 0; })) {
+        std::tie(regrown, grains, inconsistent) = growCellGrains(frame, sites, siteIndex, finder, candidates, topologies, preferredTopology,
+                                                   rmsdCutoff, atoms, *orientations, siteNeighbors, matched);
+    }
     const std::int64_t overridden = static_cast<std::int64_t>(overrides.size()) - reverted;
     std::int64_t aligned = 0;
     std::string line;
@@ -359,7 +531,7 @@ std::optional<std::string> writeStructureContract(
             static_cast<long long>(count), percentOf(static_cast<std::uint64_t>(count), static_cast<std::size_t>(crystallineSites)));
         line += entry;
     }
-    spdlog::info("Aligned {} of {} crystalline sites in {}: {}", aligned, crystallineSites, timer.elapsed(), line);
+    spdlog::info("Aligned {} of {} crystalline sites in {:.0f} ms: {}", aligned, crystallineSites, 1e3 * alignSeconds, line);
     if (rejected > 0) {
         std::ranges::nth_element(rejectedRmsd, rejectedRmsd.begin() + rejectedRmsd.size() / 2);
         spdlog::info("  {} crystalline sites ({:.1f}%) exceed the RMSD cutoff {} (median of them {:.3f}) and stay OTHER; raise --rmsd to keep them",
@@ -372,9 +544,11 @@ std::optional<std::string> writeStructureContract(
             kOverrideSupport, reverted);
     if (unaligned > 0)
         spdlog::info("  {} crystalline sites have no one-to-one alignment onto any topology and stay OTHER", unaligned);
+    if (grains > 0)
+        spdlog::info("  Grew {} grains from their best-aligned atoms in {}: {} atoms took the site and setting of their grain "
+                     "instead of their own fit; {} fits disagreed with the grain on a neighbour's site", grains,
+                     growTimer.elapsed(), regrown, inconsistent);
 
-    std::vector<int> siteIndex(natoms, -1);
-    for (std::size_t s = 0; s < sites.size(); ++s) siteIndex[sites[s]] = static_cast<int>(s);
     int* types = context.structureTypes->dataInt();
     int* counts = context.neighborCounts->dataInt();
     int* offsets = context.neighborOffsets->dataInt();

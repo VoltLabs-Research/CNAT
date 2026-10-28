@@ -58,12 +58,6 @@
                 "default": ""
               },
               {
-                "argument": "contract_types",
-                "type": "string",
-                "label": "Lattice Types",
-                "default": ""
-              },
-              {
                 "argument": "topologies",
                 "type": "string",
                 "label": "Lattice Topologies",

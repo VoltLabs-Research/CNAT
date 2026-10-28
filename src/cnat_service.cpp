@@ -21,6 +21,7 @@
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <map>
 #include <optional>
 #include <utility>
 
@@ -96,10 +97,53 @@ std::vector<std::string> splitList(const std::string& text) {
     return items;
 }
 
+// The crystal a crystal class of the model was trained on (export_model.py --crystal): a lattice topology
+// of the registry, or the reference cell its training crystal was built from.
+struct ClassCrystal {
+    std::string topology;
+    std::optional<CellAtoms> cell;
+};
+
+std::vector<ClassCrystal> modelCrystals(const CnatModel& model, const std::vector<std::string>& names) {
+    std::vector<ClassCrystal> crystals(names.size());
+    const json meta = json::parse(model.metadata(), nullptr, false);
+    if (!meta.is_object() || !meta.contains("crystals") || !meta["crystals"].is_object()) return crystals;
+    for (std::size_t c = 1; c < names.size(); ++c) {
+        const auto entry = meta["crystals"].find(names[c]);
+        if (entry == meta["crystals"].end() || !entry->is_object()) continue;
+        if (entry->contains("topology")) crystals[c].topology = lowercase((*entry)["topology"].get<std::string>());
+        if (!entry->contains("cell") || !entry->contains("atoms")) continue;
+        CellAtoms cell;
+        const auto& rows = (*entry)["cell"];
+        cell.cell = Matrix3(Vector3(rows[0][0], rows[0][1], rows[0][2]), Vector3(rows[1][0], rows[1][1], rows[1][2]),
+                            Vector3(rows[2][0], rows[2][1], rows[2][2]));
+        for (const auto& atom : (*entry)["atoms"]) {
+            cell.types.push_back(atom[0].get<int>());
+            cell.positions.emplace_back(atom[1].get<double>(), atom[2].get<double>(), atom[3].get<double>());
+        }
+        crystals[c].cell = std::move(cell);
+    }
+    return crystals;
+}
+
+// The sublattice of a cell the structure contract is written on: the species with the fewest atoms in
+// the cell. It is the sparsest one, whose sites are farthest apart and least alike under the other
+// sublattices' pseudo-symmetries (forsterite's oxygens are nearly hexagonal close packed, its Si are
+// not), and one Wyckoff orbit has every translation of the crystal, so its Burgers vectors are the
+// crystal's.
+int contractSpecies(const CellAtoms& cell) {
+    std::map<int, int> counts;
+    for (const int type : cell.types) counts[type]++;
+    int species = -1;
+    for (const auto& [type, count] : counts)
+        if (species < 0 || count < counts[species]) species = type;
+    return species;
+}
+
 // The lattice topologies of the model's crystal classes, each close-packed or diamond one with its
 // partner: the planar faults of either are local patches of the other, as CNA labels both from
 // either input lattice.
-std::vector<std::string> modelTopologies(const std::vector<std::string>& names) {
+std::vector<std::string> modelTopologies(const std::vector<std::string>& names, const std::vector<ClassCrystal>& crystals) {
     static const std::pair<const char*, const char*> partners[] = {
         {"fcc", "hcp"}, {"hcp", "fcc"}, {"cubic_diamond", "hex_diamond"}, {"hex_diamond", "cubic_diamond"}};
     std::vector<std::string> topologies;
@@ -107,9 +151,11 @@ std::vector<std::string> modelTopologies(const std::vector<std::string>& names) 
         if (crystalTopologyByName(name) && std::ranges::find(topologies, name) == topologies.end())
             topologies.push_back(name);
     };
+    const bool declared = std::ranges::any_of(crystals, [](const ClassCrystal& c) { return !c.topology.empty() || c.cell; });
     for (std::size_t c = 1; c < names.size(); ++c) {
-        const std::string name = lowercase(names[c]);
-        if (!crystalTopologyByName(name)) continue;
+        // A model that stores its crystals names each class's topology; an older one, by the class name.
+        const std::string name = declared ? crystals[c].topology : lowercase(names[c]);
+        if (name.empty() || !crystalTopologyByName(name)) continue;
         add(name);
         for (const auto& [topology, partner] : partners)
             if (name == topology) add(partner);
@@ -252,7 +298,15 @@ json CnatService::compute(const LammpsParser::Frame& frame, const std::string& o
         builtIn ? modelName(model) + " (built in)" : _modelPath,
         cfg.neighbors, cfg.hidden, cfg.layers, cfg.heads, cfg.mlp, model.parameterCount(), json(names).dump());
 
-    const auto types = parseTypes(_types);
+    // The neighbour types default to those the model was trained with (export_model.py --neighbor_types).
+    std::string typeList = _types;
+    if (typeList.empty()) {
+        const json meta = json::parse(model.metadata(), nullptr, false);
+        if (meta.is_object() && meta.contains("neighbor_types") && meta["neighbor_types"].is_array())
+            for (const auto& t : meta["neighbor_types"]) typeList += (typeList.empty() ? "" : ",") + std::to_string(t.get<int>());
+        if (!typeList.empty()) spdlog::info("Neighbour types {}, those the model was trained with", typeList);
+    }
+    const auto types = parseTypes(typeList);
     if (!types)
         return AnalysisResult::failure("--types must be a comma-separated list of atom types, got '" + _types + "'");
     LammpsParser::Frame sublattice;
@@ -265,7 +319,7 @@ json CnatService::compute(const LammpsParser::Frame& frame, const std::string& o
             if (std::ranges::find(*types, frame.types[i]) != types->end())
                 sublattice.positions.push_back(frame.positions[i]);
         sublattice.natoms = static_cast<int>(sublattice.positions.size());
-        spdlog::info("Neighbours are the {} atoms of type {} ({:.1f}% of the frame)", sublattice.natoms, _types,
+        spdlog::info("Neighbours are the {} atoms of type {} ({:.1f}% of the frame)", sublattice.natoms, typeList,
             percentOf(static_cast<std::uint64_t>(sublattice.natoms), static_cast<std::size_t>(frame.natoms)));
         cloud = &sublattice;
     }
@@ -302,7 +356,7 @@ json CnatService::compute(const LammpsParser::Frame& frame, const std::string& o
         {"model", builtIn ? modelName(model) : _modelPath},
         {"neighbors", cfg.neighbors},
         {"threshold", _threshold},
-        {"neighbour_types", _types.empty() ? std::string("all") : _types},
+        {"neighbour_types", typeList.empty() ? std::string("all") : typeList},
     };
     for (int c = 0; c < cfg.classes; ++c)
         result["main_listing"][names[c]] = atomCounts[c];
@@ -310,20 +364,42 @@ json CnatService::compute(const LammpsParser::Frame& frame, const std::string& o
 
     std::vector<LatticeTopology> topologies;
     StructureContractAtoms contractAtoms;
+    const std::vector<ClassCrystal> crystals = modelCrystals(model, names);
+    std::vector<int> cellSpecies;
     const std::string topologyRequest = lowercase(_topologies);
     if (!outputBase.empty() && topologyRequest != "none") {
         const bool automatic = topologyRequest.empty() || topologyRequest == "auto";
         std::vector<std::string> requested;
         try {
             if (!_latticeDir.empty()) setCrystalTopologySearchRoot(_latticeDir);
-            requested = automatic ? modelTopologies(names) : splitList(_topologies);
+            requested = automatic ? modelTopologies(names, crystals) : splitList(_topologies);
             topologies = loadLatticeTopologies(requested);
-            if (requested.empty() && _cell.empty())
+            if (requested.empty() && _cell.empty() && std::ranges::none_of(crystals, [](const ClassCrystal& c) { return c.cell.has_value(); }))
                 spdlog::info("No class of the model names a lattice topology; pass --topologies to write the structure contract");
         } catch (const std::exception& e) {
             if (!automatic)
                 return AnalysisResult::failure(std::string("Cannot load the lattice topologies: ") + e.what());
             spdlog::warn("Cannot load the lattice topologies ({}); the structure contract is not written", e.what());
+        }
+        for (std::size_t c = 1; c < names.size() && automatic; ++c) {
+            if (!crystals[c].cell) continue;
+            const int species = contractSpecies(*crystals[c].cell);
+            try {
+                CellTopologies cell = cellTopologies(*crystals[c].cell, lowercase(names[c]), {species}, 0.0,
+                    kCustomTopologyTypeBase + static_cast<int>(topologies.size()));
+                int least = MAX_NEIGHBORS, most = 0;
+                for (const LatticeTopology& site : cell.sites) {
+                    least = std::min(least, site.coordinationNumber);
+                    most = std::max(most, site.coordinationNumber);
+                }
+                spdlog::info("Crystal of {} (stored with the model): its {} sites of type {}, the sparsest sublattice, "
+                             "neighbours within {:.3f} A ({} to {} per site)", names[c], cell.sites.size(), species,
+                             cell.cutoff, least, most);
+                if (std::ranges::find(cellSpecies, species) == cellSpecies.end()) cellSpecies.push_back(species);
+                for (LatticeTopology& site : cell.sites) topologies.push_back(std::move(site));
+            } catch (const std::exception& e) {
+                return AnalysisResult::failure("Cannot use the crystal of " + names[c] + ": " + e.what());
+            }
         }
         if (!_cell.empty()) {
             const auto cellTypes = parseTypes(_cellTypes);
@@ -337,12 +413,8 @@ json CnatService::compute(const LammpsParser::Frame& frame, const std::string& o
                     least = std::min(least, site.coordinationNumber);
                     most = std::max(most, site.coordinationNumber);
                 }
-                spdlog::info("Reference cell {}: {} sites of type {}, neighbours within {:.3f} A ({} to {} per site); "
-                             "closest pair of sites {:.3f} apart in RMSD", cell.name, cell.sites.size(),
-                             _cellTypes.empty() ? std::string("any") : _cellTypes, cell.cutoff, least, most, cell.pseudoSymmetryRmsd);
-                if (cell.pseudoSymmetryRmsd < _rmsd)
-                    spdlog::warn("Two sites of {} align onto each other within --rmsd {}: atoms may take either and split clusters",
-                                 cell.name, _rmsd);
+                spdlog::info("Reference cell {}: {} sites of type {}, neighbours within {:.3f} A ({} to {} per site)", cell.name,
+                             cell.sites.size(), _cellTypes.empty() ? std::string("any") : _cellTypes, cell.cutoff, least, most);
                 result["main_listing"]["cell"] = cell.name;
                 result["main_listing"]["cell_cutoff"] = cell.cutoff;
                 for (LatticeTopology& site : cell.sites) topologies.push_back(std::move(site));
@@ -354,8 +426,16 @@ json CnatService::compute(const LammpsParser::Frame& frame, const std::string& o
             const auto contractTypes = parseTypes(_contractTypes);
             if (!contractTypes)
                 return AnalysisResult::failure("--contract_types must be a comma-separated list of atom types, got '" + _contractTypes + "'");
-            // The contract sublattice defaults to the model's neighbour sublattice.
-            const std::vector<int>& siteTypes = contractTypes->empty() ? *types : *contractTypes;
+            // The contract sublattice is the given one, else that of the model's cells with the model's
+            // neighbour sublattice for the classes with a registry topology, else the latter.
+            const bool registryClasses = std::ranges::any_of(topologies, [](const LatticeTopology& t) { return t.cellSite < 0; });
+            std::vector<int> siteTypes = *contractTypes;
+            if (siteTypes.empty() && !cellSpecies.empty() && !(registryClasses && types->empty())) {
+                siteTypes = cellSpecies;
+                if (registryClasses) siteTypes.insert(siteTypes.end(), types->begin(), types->end());
+            } else if (siteTypes.empty()) {
+                siteTypes = *types;
+            }
             std::vector<int> sites;
             for (int i = 0; i < frame.natoms; ++i)
                 if (siteTypes.empty() || std::ranges::find(siteTypes, frame.types[i]) != siteTypes.end()) sites.push_back(i);
@@ -365,7 +445,7 @@ json CnatService::compute(const LammpsParser::Frame& frame, const std::string& o
                 for (std::size_t t = 0; t < topologies.size(); ++t)
                     if (classTopology[c] < 0 && lowercase(names[c]) == lowercase(topologies[t].name)) classTopology[c] = static_cast<int>(t);
             // With a cell, the classes it is not (andalusite next to kyanite) are no lattice sites of it.
-            if (!_cell.empty())
+            if (!_cell.empty() || !cellSpecies.empty())
                 for (std::size_t c = 1; c < names.size(); ++c)
                     if (classTopology[c] == kAnyTopology) classTopology[c] = kNotCrystalline;
             std::vector<int> preferred(natoms);

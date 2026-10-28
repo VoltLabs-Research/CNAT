@@ -29,8 +29,8 @@ cnat <input_dump> [output_base] [options]
 | `--export_interface_mesh` | `true` | Export the iso-surface 1 − P(liquid) = threshold. |
 | `--interface_smoothing` | `2.0` | Gaussian σ in Å applied to the field before meshing; `0` disables. |
 | `--export_phase_field` | `false` | Export the grid points with their class probabilities. |
-| `--types` | all | Comma-separated atom types that form the neighbour sublattice (e.g. the oxygens of a silicate). |
-| `--topologies` | `auto` | Lattice topologies of the structure contract (below), comma-separated names of the lattice registry; `auto` takes the model's crystal classes, FCC and HCP each with the other; `none` writes no contract. |
+| `--types` | the model's | Comma-separated atom types that form the neighbour sublattice (e.g. the oxygens of a silicate); by default those the model was trained with (`forsterite-o`: 3), else all. |
+| `--topologies` | `auto` | Lattice topologies of the structure contract (below), comma-separated names of the lattice registry; `auto` takes the crystal the model stores for each class, FCC and HCP each with the other; `none` writes no contract. |
 | `--rmsd` | `0.2` | Largest RMSD, in units of the mean neighbour distance, at which a crystalline atom joins the contract. |
 | `--lattice_dir` | bundled | Directory of the lattice topology YAMLs (`lattices/`, the same files as OpenDXA's). |
 
@@ -44,7 +44,7 @@ the largest neighbour distance, so a model does not depend on the lattice parame
 |---|---|---|---|
 | `metals` (default) | LIQUID, FCC, HCP, BCC | Ni, Cu (FCC), Fe (BCC), Mg, Zr (HCP) EAM, crystals 0.3–1.0 Tm, liquids 0.85–1.5 Tm | 0.9987 (at atoms 0.9995); at Tm Cu 0.993, Fe 0.979, Mg 0.982, against PTM 0.948, 0.874, 0.964 |
 | `ni-fcc-liquid` | LIQUID, FCC | Ni, Purja Pun–Mishin 2009 EAM: FCC 600–1700 K, liquid 1500–2600 K (the paper's set) | 1.000 at every temperature |
-| `forsterite-o` | DISORDERED, OLIVINE | Mg2SiO4, Pedone 2006: crystal 300–2100 K, liquid 2500–3500 K, glass 300–1500 K; oxygen neighbours only, run with `--types <O type>` | 0.982 (crystal to 1500 K and liquids 1.000, glass 0.95–0.99) |
+| `forsterite-o` | DISORDERED, OLIVINE | Mg2SiO4, Pedone 2006: crystal 300–2100 K, liquid 2500–3500 K, glass 300–1500 K; oxygen neighbours only (type 3, stored with the model; pass `--types` if the oxygens have another type) | 0.982 (crystal to 1500 K and liquids 1.000, glass 0.95–0.99) |
 
 Structure ids are those of the other VOLT structure identifiers: LIQUID/DISORDERED 0, FCC 2, HCP 3,
 BCC 4; a class with no such structure counts up from 1000 (OLIVINE 1001). A `metals` model trained without Cu labels Cu as well as the full one, so the models should
@@ -98,7 +98,40 @@ so the two sublattices of hcp and of the diamonds join one cluster; sc, st and a
 common neighbours, join by orientation as PTM's SC does. With `--types`, the contract holds only the
 sublattice atoms. Disordered atoms are never lattice sites.
 
-OpenDXA's `--reference_topology` takes the same names (e.g. `fcc`).
+### Crystals stored with the model
+
+Every crystal class of a model carries the crystal it was trained on, so the contract needs no option
+for any phase: a lattice topology of the registry (`metals`: FCC, HCP and BCC; `ni-fcc-liquid`: FCC),
+or the reference cell its training crystal was built from (`forsterite-o`: OLIVINE, the 28-atom
+Pedone cell of `training/lammps/Fo.lmp`). The model also stores the neighbour types it was trained
+with, so `--model forsterite-o` alone writes the forsterite contract.
+
+A cell is not one registry topology: every site of its sparsest sublattice (the species with the
+fewest atoms in the cell, Si in forsterite) becomes a topology of its own, whose shell is the site's
+neighbours of that species in the cell, and each atom takes the sites of its type only. The sparsest
+sublattice has sites farthest apart and least alike under the pseudo-symmetries of the denser ones
+(forsterite's oxygens are nearly hexagonal close packed, and the full crystal has sites that nearly
+repeat at c/2), and one Wyckoff orbit has every translation of the crystal, so its Burgers vectors are
+the crystal's. Sites that a rotation or translation of the space group or a pseudo-symmetry relates fit
+an atom alike, so an atom's own best fit does not decide its site: each grain grows from its
+best-aligned atom, in order of RMSD, as a registration does. A neighbour is the site the bond to it
+lands on in the cell and takes the orientation of the atom it is reached from, if its refined fit
+stays within 10° and `--rmsd`, and agrees on every bond with the neighbours already in the grain. Two
+grains of one cell that meet within 10° are one crystal whose registrations disagree; the smaller one,
+and a seed no neighbour joined, are no lattice sites. Grains join into clusters by orientation.
+
+On Fo_Disloc (135,408 atoms; a forsterite slab with a ~4° twist boundary), `--model forsterite-o` and
+OpenDXA give the two a[100] screws (b = 4.84 Å, 341 Å of the 342 Å that two lines across the cell
+make) and the two c[001] screws (b = 6.00 Å, 274 Å of 280 Å), with 20 Å of short segments where they
+cross; 15,604 of the 15,769 crystalline Si in one cluster. Kyanite cases of the multi-site contract
+(the Al sites of `Kyanite.lmp`) give the full line with the exact b at σ 0.1 Å for all six fixtures.
+
+To give a model its crystals, pass `--crystal CLASS=topology` or `--crystal CLASS=cell.lmp` and
+`--neighbor_types` to `export_model.py`, or to `set_crystals.py` for an exported model (only the
+metadata changes). A model without crystals keeps the old behaviour: a class names its topology.
+
+OpenDXA's `--reference_topology` takes the same names (e.g. `fcc`); for a cell, the clusters carry its
+name (`olivine`), which OpenDXA uses whatever the reference.
 
 Checked against PTM (`--rmsd 0.1`) through OpenDXA on a Ni vacancy Frank loop (51,323 atoms, Mishin
 2009 EAM) after 8 ps of NPT, which dissociates into 1/6<112>, 1/6<110> and 1/3<111> segments; the

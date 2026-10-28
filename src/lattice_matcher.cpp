@@ -40,24 +40,26 @@ bool anchorFrame(const Vector3& a, const Vector3& b, Matrix3& frame) {
     return true;
 }
 
-// Each scaled, rotated ideal vector takes its nearest neighbour; false when a neighbour is taken twice.
-bool assign(const LatticeTopology& topology, const Matrix3& rotation, double scale, const Vector3* v,
-            std::array<int, MAX_NEIGHBORS>& slots, double& residual) {
+// Each scaled, rotated ideal vector takes its nearest neighbour of the candidates (of its type, with
+// types); false when a neighbour is taken twice or a vector finds none.
+bool assign(const LatticeTopology& topology, const Matrix3& rotation, double scale, const Vector3* v, int candidates,
+            const int* types, std::array<int, MAX_NEIGHBORS>& slots, double& residual) {
     const int cn = topology.coordinationNumber;
     std::uint32_t taken = 0;
     residual = 0.0;
     for (int k = 0; k < cn; ++k) {
         const Vector3 ideal = scale * (rotation * topology.unitVectors[k]);
-        int nearest = 0;
+        int nearest = -1;
         double nearestDistance = std::numeric_limits<double>::max();
-        for (int j = 0; j < cn; ++j) {
+        for (int j = 0; j < candidates; ++j) {
+            if (types && types[j] != topology.neighborTypes[k]) continue;
             const double distance = (v[j] - ideal).squaredLength();
             if (distance < nearestDistance) {
                 nearestDistance = distance;
                 nearest = j;
             }
         }
-        if (taken & (1u << nearest)) return false;
+        if (nearest < 0 || (taken & (1u << nearest))) return false;
         taken |= 1u << nearest;
         slots[k] = nearest;
         residual += nearestDistance;
@@ -83,6 +85,52 @@ bool rotationFactor(Matrix3 m, Matrix3& rotation) {
     }
     rotation = m;
     return true;
+}
+
+// The deltas in units of their mean length over the shell, and how many of them are candidates: the
+// shell for a topology without neighbour types, else every delta given (matchLattice).
+bool normalizeDeltas(const LatticeTopology& topology, const Vector3* deltas, const int* deltaTypes, int deltaCount,
+                     std::array<Vector3, kMaxMatchCandidates>& v, int& candidates, const int*& types) {
+    const int cn = topology.coordinationNumber;
+    types = deltaTypes && !topology.neighborTypes.empty() ? deltaTypes : nullptr;
+    candidates = types ? std::min(deltaCount, kMaxMatchCandidates) : cn;
+    if (candidates < cn) return false;
+    double meanLength = 0.0;
+    for (int j = 0; j < cn; ++j) meanLength += deltas[j].length();
+    meanLength /= cn;
+    if (!(meanLength > 0.0)) return false;
+    for (int j = 0; j < candidates; ++j) v[j] = deltas[j] / meanLength;
+    return true;
+}
+
+// Least-squares rotation and scale for the assignment, then the assignment again under them; each
+// step can only lower the residual.
+void refine(const LatticeTopology& topology, const Vector3* v, int candidates, const int* types,
+            std::array<int, MAX_NEIGHBORS>& slots, double& bestResidual, Matrix3& bestRotation) {
+    const int cn = topology.coordinationNumber;
+    std::array<int, MAX_NEIGHBORS> candidate{};
+    for (int pass = 0; pass < kRefinementPasses; ++pass) {
+        Matrix3 covariance(Matrix3::Zero{});
+        for (int k = 0; k < cn; ++k)
+            for (int c = 0; c < 3; ++c) covariance.column(c) += v[slots[k]] * topology.unitVectors[k][c];
+        Matrix3 rotation;
+        if (!rotationFactor(covariance, rotation)) break;
+        double projected = 0.0;
+        double idealNorm = 0.0;
+        for (int k = 0; k < cn; ++k) {
+            const Vector3 ideal = rotation * topology.unitVectors[k];
+            projected += v[slots[k]].dot(ideal);
+            idealNorm += ideal.squaredLength();
+        }
+        double residual = 0.0;
+        if (!assign(topology, rotation, projected / idealNorm, v, candidates, types, candidate, residual)) break;
+        const bool converged = std::equal(slots.begin(), slots.begin() + cn, candidate.begin());
+        slots = candidate;
+        bestResidual = residual;
+        bestRotation = rotation;
+        if (converged) break;
+    }
+
 }
 
 // Unit shell and anchor pair of a topology whose shell is set.
@@ -122,12 +170,7 @@ void prepareMatching(LatticeTopology& topology, const std::vector<Vector3>& shel
     topology.anchorFrameTransposed = frame.transposed();
 }
 
-struct CellAtoms {
-    Matrix3 cell = Matrix3(Matrix3::Zero{});
-    Point3 origin = Point3::Origin();
-    std::vector<int> types;
-    std::vector<Point3> positions;
-};
+}
 
 // LAMMPS data file, orthogonal or triclinic, 'atomic' (id type x y z) or 'charge' (id type q x y z) style.
 CellAtoms readLammpsData(const std::string& path) {
@@ -172,8 +215,6 @@ CellAtoms readLammpsData(const std::string& path) {
     }
     if (data.positions.size() != natoms) throw std::runtime_error("the reference cell " + path + " lists fewer atoms than it declares");
     return data;
-}
-
 }
 
 int structureTypeOfName(const std::string& name) {
@@ -247,14 +288,24 @@ std::vector<LatticeTopology> loadLatticeTopologies(const std::vector<std::string
 
 CellTopologies loadCellTopologies(const std::string& path, const std::vector<int>& types, double cutoff,
                                   int firstStructureType) {
+    std::string name = std::filesystem::path(path).stem().string();
+    for (auto& ch : name) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    return cellTopologies(readLammpsData(path), std::move(name), types, cutoff, firstStructureType);
+}
+
+CellTopologies cellTopologies(const CellAtoms& data, std::string name, const std::vector<int>& types, double cutoff,
+                              int firstStructureType) {
     // A site with fewer neighbours gives circuits too few bonds to close; MAX_NEIGHBORS is the contract's.
     constexpr int kMinimumSiteNeighbors = 12;
-    const CellAtoms data = readLammpsData(path);
+    const std::string path = "of " + name;
     std::vector<Vector3> frac;
+    std::vector<int> siteTypes;
     const Matrix3 inverse = data.cell.inverse();
     for (std::size_t i = 0; i < data.positions.size(); ++i)
-        if (types.empty() || std::ranges::find(types, data.types[i]) != types.end())
+        if (types.empty() || std::ranges::find(types, data.types[i]) != types.end()) {
             frac.push_back(inverse * (data.positions[i] - data.origin));
+            siteTypes.push_back(data.types[i]);
+        }
     if (frac.empty()) throw std::runtime_error("the reference cell " + path + " has no atoms of the requested types");
 
     // Neighbours of each site out to a radius that holds more than MAX_NEIGHBORS of them.
@@ -288,8 +339,7 @@ CellTopologies loadCellTopologies(const std::string& path, const std::vector<int
     }
 
     CellTopologies cell;
-    cell.name = std::filesystem::path(path).stem().string();
-    for (auto& ch : cell.name) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    cell.name = std::move(name);
     auto neighborCount = [&](std::size_t s, double radius) {
         return static_cast<int>(std::ranges::count_if(neighbors[s], [&](const Vector3& v) { return v.length() < radius; }));
     };
@@ -333,6 +383,18 @@ CellTopologies loadCellTopologies(const std::string& path, const std::vector<int
         topology.structureType = firstStructureType + static_cast<int>(s);
         topology.coordinationNumber = cn;
         topology.cellSite = static_cast<int>(s);
+        topology.siteType = siteTypes[s];
+        for (int k = 0; k < cn; ++k) {
+            const Vector3 landed = frac[s] + inverse * neighbors[s][k];
+            int site = -1;
+            for (std::size_t u = 0; u < frac.size() && site < 0; ++u) {
+                Vector3 d = landed - frac[u];
+                for (int c = 0; c < 3; ++c) d[c] -= std::round(d[c]);
+                if ((data.cell * d).length() < 1e-3) site = static_cast<int>(u);
+            }
+            topology.neighborTypes.push_back(site >= 0 ? siteTypes[site] : -1);
+            topology.neighborSites.push_back(site);
+        }
         topology.latticeVectors.assign(neighbors[s].begin(), neighbors[s].begin() + cn);
         for (auto& pair : topology.commonNeighbors) pair = {-1, -1};
         SharedCrystalSymmetryPermutation identity;
@@ -344,25 +406,16 @@ CellTopologies loadCellTopologies(const std::string& path, const std::vector<int
         cell.sites.push_back(std::move(topology));
     }
 
-    cell.pseudoSymmetryRmsd = std::numeric_limits<double>::infinity();
-    for (const LatticeTopology& from : cell.sites)
-        for (const LatticeTopology& onto : cell.sites) {
-            if (&from == &onto || from.coordinationNumber != onto.coordinationNumber) continue;
-            LatticeMatch match;
-            if (matchLattice(onto, from.latticeVectors.data(), match))
-                cell.pseudoSymmetryRmsd = std::min(cell.pseudoSymmetryRmsd, match.rmsd);
-        }
     return cell;
 }
 
-bool matchLattice(const LatticeTopology& topology, const Vector3* deltas, LatticeMatch& match) {
+bool matchLattice(const LatticeTopology& topology, const Vector3* deltas, LatticeMatch& match,
+                  const int* deltaTypes, int deltaCount) {
     const int cn = topology.coordinationNumber;
-    std::array<Vector3, MAX_NEIGHBORS> v;
-    double meanLength = 0.0;
-    for (int j = 0; j < cn; ++j) meanLength += deltas[j].length();
-    meanLength /= cn;
-    if (!(meanLength > 0.0)) return false;
-    for (int j = 0; j < cn; ++j) v[j] = deltas[j] / meanLength;
+    const int* types = nullptr;
+    int candidates = 0;
+    std::array<Vector3, kMaxMatchCandidates> v;
+    if (!normalizeDeltas(topology, deltas, deltaTypes, deltaCount, v, candidates, types)) return false;
 
     const Vector3& a = topology.unitVectors[topology.anchorA];
     const Vector3& b = topology.unitVectors[topology.anchorB];
@@ -375,18 +428,19 @@ bool matchLattice(const LatticeTopology& topology, const Vector3* deltas, Lattic
     std::array<int, MAX_NEIGHBORS> candidate{};
     Matrix3 bestRotation(Matrix3::Identity{});
     Matrix3 frame;
-    for (int p = 0; p < cn; ++p) {
+    for (int p = 0; p < candidates; ++p) {
+        if (types && types[p] != topology.neighborTypes[topology.anchorA]) continue;
         const double lengthP = v[p].length();
         if (std::abs(lengthP - lengthA) > kAnchorLengthTolerance * lengthA) continue;
-        for (int q = 0; q < cn; ++q) {
-            if (q == p) continue;
+        for (int q = 0; q < candidates; ++q) {
+            if (q == p || (types && types[q] != topology.neighborTypes[topology.anchorB])) continue;
             const double lengthQ = v[q].length();
             if (std::abs(lengthQ - lengthB) > kAnchorLengthTolerance * lengthB) continue;
             if (std::abs(v[p].dot(v[q]) / (lengthP * lengthQ) - cosineAB) > kAnchorCosineTolerance) continue;
             if (!anchorFrame(v[p], v[q], frame)) continue;
             double residual = 0.0;
             const Matrix3 rotation = frame * topology.anchorFrameTransposed;
-            if (assign(topology, rotation, 1.0, v.data(), candidate, residual) && residual < bestResidual) {
+            if (assign(topology, rotation, 1.0, v.data(), candidates, types, candidate, residual) && residual < bestResidual) {
                 bestResidual = residual;
                 slots = candidate;
                 bestRotation = rotation;
@@ -395,29 +449,7 @@ bool matchLattice(const LatticeTopology& topology, const Vector3* deltas, Lattic
     }
     if (bestResidual == std::numeric_limits<double>::max()) return false;
 
-    // Least-squares rotation and scale for the assignment, then the assignment again under them; each
-    // step can only lower the residual.
-    for (int pass = 0; pass < kRefinementPasses; ++pass) {
-        Matrix3 covariance(Matrix3::Zero{});
-        for (int k = 0; k < cn; ++k)
-            for (int c = 0; c < 3; ++c) covariance.column(c) += v[slots[k]] * topology.unitVectors[k][c];
-        Matrix3 rotation;
-        if (!rotationFactor(covariance, rotation)) break;
-        double projected = 0.0;
-        double idealNorm = 0.0;
-        for (int k = 0; k < cn; ++k) {
-            const Vector3 ideal = rotation * topology.unitVectors[k];
-            projected += v[slots[k]].dot(ideal);
-            idealNorm += ideal.squaredLength();
-        }
-        double residual = 0.0;
-        if (!assign(topology, rotation, projected / idealNorm, v.data(), candidate, residual)) break;
-        const bool converged = std::equal(slots.begin(), slots.begin() + cn, candidate.begin());
-        slots = candidate;
-        bestResidual = residual;
-        bestRotation = rotation;
-        if (converged) break;
-    }
+    refine(topology, v.data(), candidates, types, slots, bestResidual, bestRotation);
 
     // The shared orientation rule compares the orientations of two atoms bond by bond, so every atom of
     // a grain needs the same representative of its symmetry class: the one closest to the identity, as
@@ -445,6 +477,24 @@ bool matchLattice(const LatticeTopology& topology, const Vector3* deltas, Lattic
     match.rmsd = std::sqrt(bestResidual / cn);
     match.slots = slots;
     match.rotation = bestRotation;
+    return true;
+}
+
+bool matchLatticeFrom(const LatticeTopology& topology, const Vector3* deltas, const Matrix3& guess, LatticeMatch& match,
+                      const int* deltaTypes, int deltaCount) {
+    const int cn = topology.coordinationNumber;
+    const int* types = nullptr;
+    int candidates = 0;
+    std::array<Vector3, kMaxMatchCandidates> v;
+    if (!normalizeDeltas(topology, deltas, deltaTypes, deltaCount, v, candidates, types)) return false;
+    std::array<int, MAX_NEIGHBORS> slots{};
+    double residual = 0.0;
+    if (!assign(topology, guess, 1.0, v.data(), candidates, types, slots, residual)) return false;
+    Matrix3 rotation = guess;
+    refine(topology, v.data(), candidates, types, slots, residual, rotation);
+    match.rmsd = std::sqrt(residual / cn);
+    match.slots = slots;
+    match.rotation = rotation;
     return true;
 }
 

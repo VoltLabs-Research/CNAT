@@ -1,7 +1,7 @@
 """Exports a trained CNAT checkpoint (training/train.py) to the plugin's .cnat format, and optionally
 a parity fixture: neighbour sets with PyTorch probabilities for tests/parity_check.cpp.
 
-    python export_model.py model.pt model.cnat --name ni-fcc-liquid --fixture parity.bin --data heldout.npz
+    python export_model.py model.pt model.cnat --name ni-fcc-liquid --crystal FCC=fcc --fixture parity.bin --data heldout.npz
 """
 
 import argparse
@@ -15,6 +15,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from cnat import load_model, probabilities  # noqa: E402
+from crystal import crystal_entry  # noqa: E402
 
 
 def tensors(model):
@@ -39,6 +40,11 @@ def main():
     ap.add_argument("--name", required=True)
     ap.add_argument("--description", default="")
     ap.add_argument("--classes", nargs="+", default=["LIQUID", "FCC"], help="class names; the first is the disordered phase")
+    ap.add_argument("--crystal", action="append", default=[],
+                    help="CLASS=topology (fcc, hcp, bcc, ...) or CLASS=cell.lmp, the crystal the plugin aligns that "
+                         "class's atoms onto for OpenDXA's structure contract; repeat per crystal class")
+    ap.add_argument("--neighbor_types", help="comma-separated atom types the model was trained with as neighbours "
+                                             "(the plugin's default --types); all atoms when omitted")
     ap.add_argument("--fixture", type=Path)
     ap.add_argument("--data", type=Path, help="npz with neighbour sets for the parity fixture")
     ap.add_argument("--fixture_size", type=int, default=2000)
@@ -51,6 +57,14 @@ def main():
         raise SystemExit(f"--classes names {len(args.classes)} classes, the model has {cfg['classes']}")
     meta = {"name": args.name, "description": args.description, "classes": args.classes,
             "normalization": "divide by the largest neighbour distance", "neighbors": k}
+    crystals = dict(crystal_entry(spec) for spec in args.crystal)
+    unknown = [name for name in crystals if name not in args.classes[1:]]
+    if unknown:
+        raise SystemExit(f"--crystal names {', '.join(unknown)}, not crystal classes of {', '.join(args.classes[1:])}")
+    if crystals:
+        meta["crystals"] = crystals
+    if args.neighbor_types:
+        meta["neighbor_types"] = [int(t) for t in args.neighbor_types.split(",")]
     if results.exists():
         meta["accuracy"] = {n: e["overall"] for n, e in json.loads(results.read_text())["eval"].items()}
     meta_bytes = json.dumps(meta, separators=(",", ":")).encode()
