@@ -15,7 +15,7 @@
             "icon": "HiCubeTransparent",
             "author": "VoltLabs Research",
             "license": "MIT",
-            "version": "1.1.0",
+            "version": "1.2.0",
             "homepage": "https://github.com/VoltLabs-Research/CNAT",
             "description": "Identifies the phase at atoms and at arbitrary points with a Transformer over the 79 nearest neighbours (CNAT; Watanabe, Sato & Shibuta, Comput. Mater. Sci. 2027), and exports the phase field and the solid-liquid interface. Built-in models: metals (liquid, FCC, HCP, BCC), Ni FCC/liquid (the paper's), and forsterite on its oxygen sublattice (olivine/disordered)."
           }
