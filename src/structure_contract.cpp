@@ -387,9 +387,12 @@ std::optional<std::string> writeStructureContract(
     // Sites of a cell of several species align onto the nearest of each type among more candidates.
     const bool typedSites = std::ranges::any_of(topologies, [](const LatticeTopology& t) { return !t.neighborTypes.empty(); });
     const int candidates = typedSites ? std::min(kMaxMatchCandidates, maxCn + kExtraCandidates) : maxCn;
+    // Site index, alignment, clusters and the contract files, weighed by the sample runs.
+    ProgressSteps steps({1.0, 12.0, 3.0, 18.0});
     NearestNeighborFinder finder(candidates);
     if (!finder.prepare(sitePositions.get(), frame.simulationCell))
         return std::string("NearestNeighborFinder::prepare failed on the lattice sites");
+    steps.next();
 
     std::int64_t crystallineSites = 0;
     for (const int atom : sites) crystallineSites += preferredTopology[atom] != kNotCrystalline ? 1 : 0;
@@ -571,6 +574,7 @@ std::optional<std::string> writeStructureContract(
         }
     }
     context.maximumNeighborDistance = maxDistance;
+    steps.next();
 
     spdlog::info("Building clusters...");
     timer.restart();
@@ -623,6 +627,7 @@ std::optional<std::string> writeStructureContract(
         for (const int atom : sites) contractSites[atom] = true;
         contractMask = &contractSites;
     }
+    steps.next();
     spdlog::info("Writing the structure contract (annotated dump, cluster graph and neighbour lattice)...");
     timer.restart();
     if (!AnalysisPipelineUtils::appendClusterOutputs(frame, outputBase, outputBase + "_annotated.dump",

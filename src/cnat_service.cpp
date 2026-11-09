@@ -230,6 +230,14 @@ std::string countSummary(const std::vector<std::int64_t>& counts, const std::vec
     return line;
 }
 
+// Points along each cell vector of the phase-field grid, about `spacing` apart.
+std::array<int, 3> phaseFieldDims(const SimulationCell& cell, double spacing) {
+    std::array<int, 3> dims{};
+    for (int d = 0; d < 3; ++d)
+        dims[d] = std::max(2, static_cast<int>(std::lround(cell.matrix().column(d).length() / spacing)));
+    return dims;
+}
+
 json countRows(const std::vector<std::int64_t>& counts, const std::vector<std::string>& names,
                const std::vector<int>& ids, std::size_t total, const char* countKey) {
     json rows = json::array();
@@ -336,12 +344,25 @@ json CnatService::compute(const LammpsParser::Frame& frame, const std::string& o
     if (!positions)
         return AnalysisResult::failure("Failed to create position property");
 
+    // Neighbour index, atom classification, structure contract, phase field and outputs, weighed by
+    // this run's atoms and grid points: on the sample runs the model costs about the same per atom
+    // and per grid point, the contract a twentieth of that and the index and outputs a hundredth.
+    const double atomWeight = static_cast<double>(frame.natoms);
+    double gridWeight = 0.0;
+    if (_gridSpacing > 0.0) {
+        const std::array<int, 3> dims = phaseFieldDims(frame.simulationCell, _gridSpacing);
+        gridWeight = static_cast<double>(dims[0]) * dims[1] * dims[2];
+    }
+    const bool contractRequested = !outputBase.empty() && lowercase(_topologies) != "none";
+    ProgressSteps steps({0.01 * atomWeight, atomWeight, contractRequested ? 0.05 * atomWeight : 0.0,
+                         gridWeight, 0.01 * atomWeight});
     spdlog::info("Building nearest-neighbour index ({} neighbours) for {} atoms...", cfg.neighbors, cloud->natoms);
     Stopwatch timer;
     NearestNeighborFinder finder(cfg.neighbors);
     if (!finder.prepare(positions.get(), frame.simulationCell))
         return AnalysisResult::failure("NearestNeighborFinder::prepare failed");
     spdlog::info("Nearest-neighbour index ready in {}", timer.elapsed());
+    steps.next();
 
     const std::size_t natoms = static_cast<std::size_t>(frame.natoms);
     spdlog::info("Classifying {} atoms...", natoms);
@@ -355,6 +376,7 @@ json CnatService::compute(const LammpsParser::Frame& frame, const std::string& o
     std::vector<std::int64_t> atomCounts(cfg.classes, 0);
     for (int label : atomLabels) atomCounts[label]++;
     spdlog::info("Atoms: {}", countSummary(atomCounts, names, natoms));
+    steps.next();
 
     json result = AnalysisResult::success();
     result["main_listing"] = {
@@ -461,12 +483,11 @@ json CnatService::compute(const LammpsParser::Frame& frame, const std::string& o
         }
     }
     result["main_listing"]["structure_contract"] = !topologies.empty();
+    steps.next();
 
     if (_gridSpacing > 0.0) {
         const SimulationCell& cell = frame.simulationCell;
-        std::array<int, 3> dims{};
-        for (int d = 0; d < 3; ++d)
-            dims[d] = std::max(2, static_cast<int>(std::lround(cell.matrix().column(d).length() / _gridSpacing)));
+        const std::array<int, 3> dims = phaseFieldDims(cell, _gridSpacing);
         const std::size_t gridCount = static_cast<std::size_t>(dims[0]) * dims[1] * dims[2];
         auto gridPoint = [&](std::size_t g) {
             const std::size_t i = g % dims[0];
@@ -525,6 +546,7 @@ json CnatService::compute(const LammpsParser::Frame& frame, const std::string& o
                 true);
         }
     }
+    steps.next();
 
     if (!outputBase.empty()) {
         Plugin::serializePluginOutput(outputBase, frame, result, {
