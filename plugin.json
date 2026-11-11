@@ -12,6 +12,7 @@
           "modifier": {
             "name": "CNAT Phase Identification",
             "key": "cnat",
+            "category": "Structure identification",
             "icon": "HiCubeTransparent",
             "author": "VoltLabs Research",
             "license": "MIT",
