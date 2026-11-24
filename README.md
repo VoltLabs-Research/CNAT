@@ -12,6 +12,7 @@ iso-surface is exported as the interface mesh.
 ## Install
 
 ```bash
+npm install -g @voltstack/vpm
 vpm install @voltlabs/cnat
 ```
 
