@@ -12,9 +12,7 @@ namespace Volt {
 extern const CnatModel::Embedded kCnatEmbeddedModels[];
 extern const std::size_t kCnatEmbeddedModelCount;
 
-namespace {
-
-class Reader {
+class CnatModel::Reader {
 public:
     explicit Reader(std::span<const std::uint8_t> bytes) : _bytes(bytes) {}
 
@@ -54,20 +52,6 @@ private:
     std::size_t _offset = 0;
 };
 
-inline void layerNorm(const float* x, const std::vector<float>& gain, const std::vector<float>& bias,
-                      int d, float* y) {
-    float mean = 0.0f;
-    for (int c = 0; c < d; ++c) mean += x[c];
-    mean /= static_cast<float>(d);
-    float var = 0.0f;
-    for (int c = 0; c < d; ++c) {
-        const float t = x[c] - mean;
-        var += t * t;
-    }
-    const float inv = 1.0f / std::sqrt(var / static_cast<float>(d) + 1e-6f);
-    for (int c = 0; c < d; ++c) y[c] = (x[c] - mean) * inv * gain[c] + bias[c];
-}
-
 // The plugin ships one x86-64 binary built for the baseline ISA; on Linux the dense layers, about 85%
 // of the work, also get an AVX2/FMA clone that the loader picks on CPUs that have it.
 #if defined(__GNUC__) && !defined(__clang__) && defined(__x86_64__) && defined(__linux__)
@@ -76,11 +60,9 @@ inline void layerNorm(const float* x, const std::vector<float>& gain, const std:
 #define CNAT_MULTIVERSION
 #endif
 
-// out[r][c0..c1) = bias + in[r] . W[:, c0..c1) for weightT stored [in][out]. Rows go in blocks of
-// eight so each weight row is read once per block instead of once per token.
 CNAT_MULTIVERSION
-void linearRows(const float* weightT, const float* bias, int in, int outDim, const float* x, int ldIn,
-                int rows, float* out, int ldOut, int c0, int c1) {
+void CnatModel::linearRows(const float* weightT, const float* bias, int in, int outDim, const float* x, int ldIn,
+                           int rows, float* out, int ldOut, int c0, int c1) {
     constexpr int kRowBlock = 8;
     for (int r0 = 0; r0 < rows; r0 += kRowBlock) {
         const int nr = std::min(kRowBlock, rows - r0);
@@ -97,13 +79,6 @@ void linearRows(const float* weightT, const float* bias, int in, int outDim, con
             }
         }
     }
-}
-
-inline float gelu(float x) {
-    // tanh approximation, as flax.linen.gelu and torch gelu(approximate="tanh")
-    return 0.5f * x * (1.0f + std::tanh(0.7978845608028654f * (x + 0.044715f * x * x * x)));
-}
-
 }
 
 CnatModel CnatModel::fromBytes(std::span<const std::uint8_t> bytes) {

@@ -3,6 +3,7 @@
 // crystalline, -1 any topology, else the index into <topologies>; e.g. from a CNAT atoms table). A
 // perfect lattice must align every atom with RMSD ~0 and give one cluster.
 //   cnat-contract-check <dump> <output_base> <topologies> <rmsd> [lattice_dir] [preferences]
+#include <volt/plugin/cnat_log.h>
 #include <volt/plugin/structure_contract.h>
 #include <volt/core/lammps_parser.h>
 #include <volt/structures/crystal_topology_registry.h>
@@ -42,7 +43,8 @@ int main(int argc, char** argv) {
     }
     json result;
     StructureContractAtoms atoms;
-    if (auto error = writeStructureContract(frame, argv[2], sites, preferred, topologies, std::stod(argv[4]), result, atoms)) {
+    CnatLog log;
+    if (auto error = writeStructureContract(frame, argv[2], sites, preferred, topologies, std::stod(argv[4]), result, atoms, log)) {
         std::fprintf(stderr, "%s\n", error->c_str());
         return 1;
     }

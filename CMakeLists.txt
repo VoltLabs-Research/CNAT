@@ -37,6 +37,7 @@ volt_add_plugin(cnat
         src/lattice_matcher.cpp
         src/structure_contract.cpp
         src/cnat_service.cpp
+        src/cnat_log.cpp
         ${_embedded_model}
     MAIN_SOURCE src/plugin.cpp
     DEPENDENCIES

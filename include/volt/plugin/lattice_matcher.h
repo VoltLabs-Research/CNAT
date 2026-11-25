@@ -3,7 +3,10 @@
 #include <volt/analysis/crystal_topology_library.h>
 #include <volt/analysis/structure_analysis.h>
 
+#include <algorithm>
 #include <array>
+#include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -106,6 +109,129 @@ bool matchLattice(const LatticeTopology& topology, const Vector3* deltas, Lattic
 // the refinement. Grows a grain from atoms whose orientation is known.
 bool matchLatticeFrom(const LatticeTopology& topology, const Vector3* deltas, const Matrix3& guess, LatticeMatch& match,
                       const int* deltaTypes = nullptr, int deltaCount = 0);
+
+// The steps matchLattice and matchLatticeFrom take, and the matching data of a topology. They run per site and per
+// topology, so the small ones are inline.
+namespace LatticeMatcherDetail {
+
+// A neighbour pair is tried as the image of the anchor pair when its lengths and angle cosine are this
+// close to the anchors'; the bounds only prune, the assignment residual decides.
+inline constexpr double kAnchorLengthTolerance = 0.3;
+inline constexpr double kAnchorCosineTolerance = 0.35;
+inline constexpr int kRefinementPasses = 3;
+inline constexpr int kPolarIterations = 30;
+
+// The name in lower case: topologies and CNAT classes match by name whatever its case.
+std::string lowercase(std::string s);
+
+// Orthonormal frame (columns) with its first axis along a and its second in the a-b plane.
+inline bool anchorFrame(const Vector3& a, const Vector3& b, Matrix3& frame) {
+    const Vector3 normal = a.cross(b);
+    const double normalLength = normal.length();
+    if (!(normalLength > 1e-6 * a.length() * b.length())) return false;
+    const Vector3 e1 = a / a.length();
+    const Vector3 e3 = normal / normalLength;
+    frame = Matrix3(e1, e3.cross(e1), e3);
+    return true;
+}
+
+// Each scaled, rotated ideal vector takes its nearest neighbour of the candidates (of its type, with
+// types); false when a neighbour is taken twice or a vector finds none.
+inline bool assign(const LatticeTopology& topology, const Matrix3& rotation, double scale, const Vector3* v, int candidates,
+                   const int* types, std::array<int, MAX_NEIGHBORS>& slots, double& residual) {
+    const int cn = topology.coordinationNumber;
+    std::uint32_t taken = 0;
+    residual = 0.0;
+    for (int k = 0; k < cn; ++k) {
+        const Vector3 ideal = scale * (rotation * topology.unitVectors[k]);
+        int nearest = -1;
+        double nearestDistance = std::numeric_limits<double>::max();
+        for (int j = 0; j < candidates; ++j) {
+            if (types && types[j] != topology.neighborTypes[k]) continue;
+            const double distance = (v[j] - ideal).squaredLength();
+            if (distance < nearestDistance) {
+                nearestDistance = distance;
+                nearest = j;
+            }
+        }
+        if (nearest < 0 || (taken & (1u << nearest))) return false;
+        taken |= 1u << nearest;
+        slots[k] = nearest;
+        residual += nearestDistance;
+    }
+    return true;
+}
+
+// Rotation factor of the polar decomposition by Newton's iteration X <- (X + X^-T) / 2, where the
+// columns of X^-T are the cross products of X's columns over det X. False unless det m > 0, i.e. unless
+// the best orthogonal fit is a proper rotation.
+inline bool rotationFactor(Matrix3 m, Matrix3& rotation) {
+    if (!(m.determinant() > 1e-12)) return false;
+    for (int i = 0; i < kPolarIterations; ++i) {
+        const double det = m.determinant();
+        const Matrix3 inverseTransposed(m.column(1).cross(m.column(2)) / det,
+                                        m.column(2).cross(m.column(0)) / det,
+                                        m.column(0).cross(m.column(1)) / det);
+        const Matrix3 next = 0.5 * (m + inverseTransposed);
+        double change = 0.0;
+        for (int c = 0; c < 3; ++c) change += (next.column(c) - m.column(c)).squaredLength();
+        m = next;
+        if (change < 1e-24) break;
+    }
+    rotation = m;
+    return true;
+}
+
+// The deltas in units of their mean length over the shell, and how many of them are candidates: the
+// shell for a topology without neighbour types, else every delta given (matchLattice).
+inline bool normalizeDeltas(const LatticeTopology& topology, const Vector3* deltas, const int* deltaTypes, int deltaCount,
+                            std::array<Vector3, kMaxMatchCandidates>& v, int& candidates, const int*& types) {
+    const int cn = topology.coordinationNumber;
+    types = deltaTypes && !topology.neighborTypes.empty() ? deltaTypes : nullptr;
+    candidates = types ? std::min(deltaCount, kMaxMatchCandidates) : cn;
+    if (candidates < cn) return false;
+    double meanLength = 0.0;
+    for (int j = 0; j < cn; ++j) meanLength += deltas[j].length();
+    meanLength /= cn;
+    if (!(meanLength > 0.0)) return false;
+    for (int j = 0; j < candidates; ++j) v[j] = deltas[j] / meanLength;
+    return true;
+}
+
+// Least-squares rotation and scale for the assignment, then the assignment again under them; each
+// step can only lower the residual.
+inline void refine(const LatticeTopology& topology, const Vector3* v, int candidates, const int* types,
+                   std::array<int, MAX_NEIGHBORS>& slots, double& bestResidual, Matrix3& bestRotation) {
+    const int cn = topology.coordinationNumber;
+    std::array<int, MAX_NEIGHBORS> candidate{};
+    for (int pass = 0; pass < kRefinementPasses; ++pass) {
+        Matrix3 covariance(Matrix3::Zero{});
+        for (int k = 0; k < cn; ++k)
+            for (int c = 0; c < 3; ++c) covariance.column(c) += v[slots[k]] * topology.unitVectors[k][c];
+        Matrix3 rotation;
+        if (!rotationFactor(covariance, rotation)) break;
+        double projected = 0.0;
+        double idealNorm = 0.0;
+        for (int k = 0; k < cn; ++k) {
+            const Vector3 ideal = rotation * topology.unitVectors[k];
+            projected += v[slots[k]].dot(ideal);
+            idealNorm += ideal.squaredLength();
+        }
+        double residual = 0.0;
+        if (!assign(topology, rotation, projected / idealNorm, v, candidates, types, candidate, residual)) break;
+        const bool converged = std::equal(slots.begin(), slots.begin() + cn, candidate.begin());
+        slots = candidate;
+        bestResidual = residual;
+        bestRotation = rotation;
+        if (converged) break;
+    }
+
+}
+
+// Unit shell and anchor pair of a topology whose shell is set.
+void prepareMatching(LatticeTopology& topology, const std::vector<Vector3>& shell);
+
+}
 
 // Crystal information of the topologies for the shared cluster builder and the contract export.
 class LatticeCrystalInfo final : public StructureAnalysisCrystalInfo {

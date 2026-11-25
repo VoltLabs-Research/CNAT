@@ -7,17 +7,6 @@
 
 namespace Volt {
 
-namespace {
-
-// Corner c of a unit cube is offset (c & 1, (c >> 1) & 1, (c >> 2) & 1). Each tetrahedron walks from
-// corner 0 to corner 7 adding one axis at a time; the six axis orders tile the cube, and the shared
-// face diagonals match between neighbouring cubes.
-constexpr int kTetrahedra[6][4] = {
-    {0, 1, 3, 7}, {0, 1, 5, 7}, {0, 2, 3, 7}, {0, 2, 6, 7}, {0, 4, 5, 7}, {0, 4, 6, 7},
-};
-
-}
-
 std::vector<float> smoothField(const std::vector<float>& field, const std::array<int, 3>& dims,
                                const SimulationCell& cell, double sigma) {
     std::vector<float> a = field, b(field.size());
@@ -54,6 +43,12 @@ std::vector<float> smoothField(const std::vector<float>& field, const std::array
 
 PhaseFieldMesh extractIsosurface(const std::vector<float>& field, const std::array<int, 3>& dims,
                                  const SimulationCell& cell, float iso) {
+    // Corner c of a unit cube is offset (c & 1, (c >> 1) & 1, (c >> 2) & 1). Each tetrahedron walks from
+    // corner 0 to corner 7 adding one axis at a time; the six axis orders tile the cube, and the shared
+    // face diagonals match between neighbouring cubes.
+    static constexpr int kTetrahedra[6][4] = {
+        {0, 1, 3, 7}, {0, 1, 5, 7}, {0, 2, 3, 7}, {0, 2, 6, 7}, {0, 4, 5, 7}, {0, 4, 6, 7},
+    };
     PhaseFieldMesh mesh;
     const auto& pbc = cell.pbcFlags();
     std::array<int, 3> cubes{};
