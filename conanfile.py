@@ -14,8 +14,8 @@ class CnatConan(ConanFile):
     requires = (
         "boost/1.88.0",
         "onetbb/2021.12.0",
-        "coretoolkit/[>=2.8]",
-        "structure-identification/[>=2.1]",
+        "coretoolkit/[>=2.9]",
+        "structure-identification/[>=2.4]",
         "spdlog/1.14.1",
         "nlohmann_json/3.11.3",
         "yaml-cpp/0.8.0",
