@@ -21,7 +21,6 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <filesystem>
 #include <map>
 #include <optional>
 #include <utility>
@@ -128,7 +127,7 @@ std::vector<std::string> CnatService::modelTopologies(const std::vector<std::str
     return topologies;
 }
 
-void CnatService::writeProbabilities(ColumnarAtomWriter& w, const float* p, const std::vector<std::string>& names) {
+void CnatService::writeProbabilities(ColumnarRowWriter& w, const float* p, const std::vector<std::string>& names) {
     w.field("probability_crystalline", 1.0 - static_cast<double>(p[0]));
     for (std::size_t c = 0; c < names.size(); ++c)
         w.field("probability_" + lowercase(names[c]), static_cast<double>(p[c]));
@@ -192,40 +191,6 @@ json CnatService::countRows(const std::vector<std::int64_t>& counts, const std::
         });
     }
     return rows;
-}
-
-json CnatService::cellJson(const SimulationCell& cell) {
-    const auto& m = cell.matrix();
-    const auto& pbc = cell.pbcFlags();
-    return {
-        {"matrix", {
-            {m.column(0).x(), m.column(0).y(), m.column(0).z()},
-            {m.column(1).x(), m.column(1).y(), m.column(1).z()},
-            {m.column(2).x(), m.column(2).y(), m.column(2).z()},
-        }},
-        {"origin", {m.column(3).x(), m.column(3).y(), m.column(3).z()}},
-        {"pbc", {pbc[0], pbc[1], pbc[2]}},
-    };
-}
-
-void CnatService::writeMesh(const std::string& filePath, const PhaseFieldMesh& mesh, const SimulationCell& cell) {
-    const std::string base = filePath.substr(0, filePath.size() - std::string(".parquet").size());
-    const std::string verticesPath = base + ".vertices.parquet";
-    const std::string facetsPath = base + ".facets.parquet";
-    streamMeshTablesToParquet(verticesPath, facetsPath, mesh.vertices, mesh.facets);
-
-    json doc;
-    doc["main_listing"] = {
-        {"total_nodes", static_cast<std::int64_t>(mesh.vertices.size())},
-        {"total_facets", static_cast<std::int64_t>(mesh.facets.size())},
-        {"area", mesh.area},
-    };
-    doc["export"]["MeshExporter"][kParquetSourceKey] = {
-        {"vertices", std::filesystem::path(verticesPath).filename().string()},
-        {"facets", std::filesystem::path(facetsPath).filename().string()},
-        {"cell", cellJson(cell)},
-    };
-    JsonUtils::writeJsonToParquet(doc, filePath);
 }
 
 json CnatService::compute(const LammpsParser::Frame& frame, const std::string& outputBase) {
@@ -438,8 +403,12 @@ json CnatService::compute(const LammpsParser::Frame& frame, const std::string& o
             const PhaseFieldMesh mesh = extractIsosurface(field, dims, cell, static_cast<float>(_threshold));
             log.dump(mesh);
             result["main_listing"]["interface_area"] = mesh.area;
-            if (!outputBase.empty())
-                writeMesh(outputPath(outputBase, "interface_mesh"), mesh, cell);
+            if (!outputBase.empty()) {
+                const std::string meshPath = outputPath(outputBase, "interface_mesh");
+                json meshDoc = writeMeshTables(meshPath, mesh.vertices, mesh.facets, cell);
+                meshDoc["main_listing"]["area"] = mesh.area;
+                JsonUtils::writeJsonToParquet(meshDoc, meshPath);
+            }
         }
 
         if (_exportPhaseField && !outputBase.empty()) {
@@ -456,7 +425,7 @@ json CnatService::compute(const LammpsParser::Frame& frame, const std::string& o
             }
             streamAtomsToParquet(outputPath(outputBase, "phase_field"), grid,
                 [&](std::size_t g) { return names[gridLabels[g]]; },
-                [&](ColumnarAtomWriter& w, std::size_t g) {
+                [&](ColumnarRowWriter& w, std::size_t g) {
                     writeProbabilities(w, gridProbabilities.data() + g * cfg.classes, names);
                 },
                 [&](std::size_t g) { return ids[gridLabels[g]]; },
@@ -469,7 +438,7 @@ json CnatService::compute(const LammpsParser::Frame& frame, const std::string& o
         Plugin::serializePluginOutput(outputBase, frame, result, {
             .summaryFileSuffix = "_cnat",
             .bucketResolver = [&](std::size_t i) { return names[atomLabels[i]]; },
-            .perAtomColumnWriter = [&](ColumnarAtomWriter& w, std::size_t i) {
+            .perAtomColumnWriter = [&](ColumnarRowWriter& w, std::size_t i) {
                 writeProbabilities(w, atomProbabilities.data() + i * cfg.classes, names);
                 if (topologies.empty()) return;
                 const int t = contractAtoms.topology[i];

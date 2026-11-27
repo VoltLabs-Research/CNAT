@@ -500,11 +500,11 @@ std::optional<std::string> writeStructureContract(
     json& listing = result["main_listing"];
     listing["lattice_topologies"] = names;
     listing["lattice_rmsd_cutoff"] = rmsdCutoff;
-    listing["lattice_sites"] = static_cast<std::int64_t>(sites.size());
+    listing["lattice_sites"] = sites.size();
     listing["aligned_sites"] = aligned;
     listing["sites_over_rmsd_cutoff"] = alignment.rejected;
     listing["sites_off_their_class_topology"] = static_cast<std::int64_t>(alignment.overrides) - alignment.reverted;
-    listing["clusters"] = static_cast<std::int64_t>(clusterCount);
+    listing["clusters"] = clusterCount;
     json rows = json::array();
     for (std::size_t t = 0; t < topologies.size(); ++t) {
         rows.push_back({

@@ -18,7 +18,7 @@ using json = nlohmann::json;
 
 class CnatLog;
 class CnatModel;
-class ColumnarAtomWriter;
+class ColumnarRowWriter;
 class NearestNeighborFinder;
 struct PhaseFieldMesh;
 
@@ -112,7 +112,6 @@ public:
 
 private:
     static constexpr int kMaxNeighbors = 128;
-    static constexpr const char* kParquetSourceKey = "__parquet_source__";
 
     // The crystal a crystal class of the model was trained on (export_model.py --crystal): a lattice topology
     // of the registry, or the reference cell its training crystal was built from.
@@ -144,7 +143,7 @@ private:
                                                     const std::vector<ClassCrystal>& crystals);
     // probability_crystalline (1 - P(class 0), the field of the interface mesh, with the same name for
     // every model) and one probability_<class> column per class.
-    static void writeProbabilities(ColumnarAtomWriter& w, const float* p, const std::vector<std::string>& names);
+    static void writeProbabilities(ColumnarRowWriter& w, const float* p, const std::vector<std::string>& names);
     // Class probabilities of every point, row-major [point][class].
     template<typename PointAt>
     static std::vector<float> classifyPoints(const CnatModel& model, const NearestNeighborFinder& finder,
@@ -156,8 +155,6 @@ private:
     static std::array<int, 3> phaseFieldDims(const SimulationCell& cell, double spacing);
     static json countRows(const std::vector<std::int64_t>& counts, const std::vector<std::string>& names,
                           const std::vector<int>& ids, std::size_t total, const char* countKey);
-    static json cellJson(const SimulationCell& cell);
-    static void writeMesh(const std::string& filePath, const PhaseFieldMesh& mesh, const SimulationCell& cell);
 
     std::string _modelPath;
     double _threshold = 0.5;
